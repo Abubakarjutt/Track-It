@@ -40,6 +40,12 @@ public final class WorkoutSessionModel {
     public private(set) var isRestTargetReached = false
     /// A stale open workout awaiting the user's resume-or-discard choice, or nil.
     public private(set) var staleRecovery: StaleWorkoutRecovery?
+    /// The exercise the next set will be logged against. Tracks the engine's
+    /// active entry, which moves *back* to an earlier exercise when the lifter
+    /// re-announces it — so this is not always `workout.entries.last`. Mirrored
+    /// here because the engine keeps its active index private and the core is
+    /// frozen. `nil` when no workout is open.
+    public private(set) var activeExerciseName: String?
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -85,8 +91,13 @@ public final class WorkoutSessionModel {
     /// treat its exercises as already announced this workout so the next readback
     /// for one is terse.
     private func seedAnnouncedFromCurrentWorkout() {
-        guard let workout, !workout.isEnded else { return }
+        guard let workout, !workout.isEnded else {
+            activeExerciseName = nil
+            return
+        }
         announcedThisWorkout = Set(workout.entries.map(\.exercise.name))
+        // `WorkoutEngine.resume` points its active entry at the last one.
+        activeExerciseName = workout.entries.last?.exercise.name
     }
 
     /// The workout the launch prompt is asking about, if any.
@@ -144,6 +155,12 @@ public final class WorkoutSessionModel {
         apply([rewrite(lastTranscript, toName: exercise.name)])
     }
 
+    /// Dismiss the tap-select shortlist without picking anything. The pending
+    /// utterance is dropped and the workout is left exactly as it was.
+    public func dismissTapSelect() {
+        tapSelectCandidates = nil
+    }
+
     public func tick() {
         guard let startedAt = restStartedAt else {
             restElapsed = 0
@@ -175,6 +192,7 @@ public final class WorkoutSessionModel {
 
         engine.hear(hypotheses)
         syncFromEngine()
+        updateActiveExercise(from: results)
 
         let setsAfter = totalSetCount(workout)
         let loggedASet = setsAfter > setsBefore
@@ -243,6 +261,27 @@ public final class WorkoutSessionModel {
         // A clean parse resolves any pending disambiguation — including one
         // answered by simply re-speaking the set — so drop the stale list.
         tapSelectCandidates = nil
+    }
+
+    /// Keep `activeExerciseName` in step with the engine's active entry. An
+    /// `.announcement` moves it (the engine reuses an existing entry for that
+    /// name, or appends one); a bare set leaves it where it was; anything that
+    /// clears the workout drops it.
+    private func updateActiveExercise(from results: [ParseResult]) {
+        guard let workout, !workout.isEnded else {
+            activeExerciseName = nil
+            return
+        }
+        for case .announcement(let exercise) in results {
+            activeExerciseName = exercise.name
+            return
+        }
+        let stillValid = activeExerciseName.map { name in
+            workout.entries.contains { $0.exercise.name == name }
+        } ?? false
+        if !stillValid {
+            activeExerciseName = workout.entries.last?.exercise.name
+        }
     }
 
     private func syncFromEngine() {

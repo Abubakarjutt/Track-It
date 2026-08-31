@@ -60,7 +60,8 @@ struct SetFormattingTests {
 struct HUDProjectionTests {
 
     private static let bench = Exercise(name: "Bench Press", aliases: ["bench"])
-    private static let library = ExerciseLibrary([bench])
+    private static let squat = Exercise(name: "Back Squat", aliases: ["squat"])
+    private static let library = ExerciseLibrary([bench, squat])
 
     private struct Rig { let model: WorkoutSessionModel; let source: ScriptedTranscriptSource }
 
@@ -144,6 +145,19 @@ struct HUDProjectionTests {
         #expect(lines.count == 2)
         #expect(lines[0] == "warm-up 60 kg × 10")
         #expect(lines[1] == "100 kg × 5 · superset")
+    }
+
+    @Test("returning to an earlier exercise projects that entry, not the last one added")
+    func projectsActiveEntryNotLast() async throws {
+        let rig = try makeRig(script: [
+            ["start workout"], ["bench 100 for 5"], ["squat 140 for 3"], ["bench"],
+        ])
+        for _ in 0..<4 { await say(rig) }
+
+        let p = HUDProjection(from: rig.model)
+        #expect(p.exerciseName == "Bench Press")
+        #expect(p.lastSetLine == "100 kg × 5")
+        #expect(p.currentEntrySetLines == ["100 kg × 5"])
     }
 
     @Test("low-confidence input surfaces tap-select candidates on the projection")

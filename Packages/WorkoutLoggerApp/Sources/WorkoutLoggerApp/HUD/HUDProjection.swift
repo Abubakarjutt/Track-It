@@ -33,7 +33,12 @@ public struct HUDProjection: Equatable, Sendable {
 
     @MainActor
     public init(from model: WorkoutSessionModel) {
-        let entry = model.workout?.entries.last
+        // The active entry, which is not always the last one added — the lifter
+        // can return to an earlier exercise. Falls back to the last entry.
+        let entries = model.workout?.entries
+        let entry = model.activeExerciseName
+            .flatMap { name in entries?.last { $0.exercise.name == name } }
+            ?? entries?.last
         let unit = model.displayUnit
         exerciseName = entry?.exercise.name ?? "No exercise yet"
         lastSetLine = entry?.sets.last.map { formattedSetLine($0, unit: unit) }

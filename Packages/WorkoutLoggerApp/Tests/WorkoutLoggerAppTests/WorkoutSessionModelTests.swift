@@ -202,6 +202,19 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.tapSelectCandidates == nil)
     }
 
+    @Test("dismissTapSelect drops the candidate list without touching the workout")
+    func dismissTapSelectClearsWithoutLogging() async throws {
+        let rig = try makeRig(script: [["start workout"], ["flurbo"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates != nil)
+        let before = rig.model.workout
+
+        rig.model.dismissTapSelect()
+
+        #expect(rig.model.tapSelectCandidates == nil)
+        #expect(rig.model.workout == before)
+    }
+
     @Test("tick fires restReached once after the rest target passes, then not again")
     func restReachedOnce() async throws {
         var clock = Date(timeIntervalSince1970: 1_000)
