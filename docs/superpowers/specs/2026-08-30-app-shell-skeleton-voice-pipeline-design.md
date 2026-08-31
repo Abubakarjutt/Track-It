@@ -49,8 +49,10 @@ Five decisions were settled in brainstorming:
 3. **Persistence** — one `@Model WorkoutRecord { startedAt (unique), endedAt,
    payload: Data }` holding the JSON-encoded `Workout`. `save` upserts by
    `startedAt` (the engine's per-session timestamp). Read side decodes all.
-   `Codable` is added to the core value types by extensions **inside
-   `WorkoutLoggerApp`** — zero edits to `WorkoutLoggerCore`.
+   `Codable` is added to the core value types **in `WorkoutLoggerCore`** (a
+   one-line `: Codable` on each — Swift only synthesises `Codable` in the type's
+   own module, so a cross-module extension would need hand-written coders). This
+   is the one core edit: purely additive, no behaviour change, no test breakage.
 4. **Speech interface** — `protocol TranscriptSource { func beginUtterance();
    func endUtterance() async throws -> [String] }`. Press → `beginUtterance`,
    release → `endUtterance` yields the final n-best. Real impl wraps
@@ -60,7 +62,8 @@ Five decisions were settled in brainstorming:
    library:)` to inspect what the parser produced (for readback style, haptic
    choice, tap-select), then calls `engine.hear(hypotheses)` to apply. `parse`
    runs twice per utterance: both pure, both sub-millisecond, once per ~10 s of
-   human action. `WorkoutLoggerCore` stays frozen.
+   human action. `WorkoutLoggerCore`'s logic stays frozen — the only edit is the
+   additive `: Codable` from decision 3.
 
 ## Repository layout
 
@@ -115,7 +118,7 @@ final class SwiftDataWorkoutStore: WorkoutStore {
 - `WorkoutStore` (the protocol in the core) stays save-only and engine-facing.
   `history()` / `openWorkout()` are concrete methods used by the launch check and
   later by the progress screens; they are **not** added to the core protocol.
-- `Codable` conformances (synthesized, in `WorkoutLoggerApp`): `Workout`, `Entry`,
+- `Codable` conformances (synthesized, added in `WorkoutLoggerCore`): `Workout`, `Entry`,
   `LoggedSet`, `Exercise`, `PersonalRecord`, `LoadType`, `EffortMeasure`,
   `SetRole`, `Grouping`, `MassUnit`.
 - Tests use `ModelConfiguration(isStoredInMemoryOnly: true)`.
@@ -278,7 +281,7 @@ compiles and to smoke-test on device.
 - HealthKit writer, file export, telemetry queue (F).
 - Partial/streaming transcripts and a "listening…" shimmer (optional later
   addition to `TranscriptSource`, contract unchanged).
-- Any change to `WorkoutLoggerCore`.
+- Any change to `WorkoutLoggerCore` beyond the additive `: Codable` conformances.
 
 ## Risks
 
