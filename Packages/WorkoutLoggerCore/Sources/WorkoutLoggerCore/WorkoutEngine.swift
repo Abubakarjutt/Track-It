@@ -254,6 +254,47 @@ public final class WorkoutEngine {
         )
     }
 
+    /// Adopts an existing, not-yet-ended workout — the launch resume path for a
+    /// workout the user forgot to end. Precondition (guarded): `!workout.isEnded`.
+    ///
+    /// New sets attach to the workout's last entry. The rest timer starts fresh
+    /// (a rest period from before the app was killed is meaningless). No
+    /// `PersonalRecord` is re-announced for work already in the record — but the
+    /// PR bar is seeded from `knownBests` folded with that work, so a set logged
+    /// after resuming is a record only if it beats both history and this session.
+    ///
+    /// Precondition: no workout is already open. The only caller is the launch
+    /// composition root, before any `startWorkout`. Unlike `startWorkout()` this
+    /// does not close a workout in progress — it overwrites `self.workout`
+    /// wholesale — so calling it mid-session would silently drop the open one.
+    public func resume(_ workout: Workout) {
+        guard !workout.isEnded else { return }
+
+        self.workout = workout
+        activeEntryIndex = workout.entries.indices.last
+        personalRecords = []
+        retryTarget = nil
+        currentSupersetRunID = nil
+        supersetRunCount = workout.entries
+            .flatMap(\.sets)
+            .compactMap(\.supersetRunID)
+            .max() ?? 0
+        templateRestTargets = [:]
+        restStartedAt = nil
+
+        var best = knownBests
+        for entry in workout.entries {
+            for set in entry.sets where set.role == .working {
+                guard let load = set.loadKilograms, let reps = set.reps else { continue }
+                let e1rm = estimatedOneRepMax(loadKilograms: load, reps: reps)
+                best[entry.exercise.name] = max(best[entry.exercise.name] ?? 0, e1rm)
+            }
+        }
+        bestOneRepMax = best
+
+        store.save(workout)
+    }
+
     /// Closes the workout in progress and persists the closed revision.
     public func endWorkout() {
         guard var workout, !workout.isEnded else { return }
