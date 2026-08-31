@@ -260,6 +260,10 @@ logger.
 - **Speech capture.** Wraps the on-device speech recogniser and the iOS audio
   session; owns push-to-talk start/stop; emits transcripts. Behind an interface
   so the rest of the app can be driven by a fake transcript source in tests.
+  The app-shell realisation of this interface is `TranscriptSource`
+  (`beginUtterance` / `endUtterance() async -> [String]`); `SystemSpeechRecognizer`
+  wraps `SFSpeechRecognizer` + `AVAudioEngine`, and a `ScriptedTranscriptSource`
+  fake drives the session model in `swift test`.
 - **Exercise library + resolver.** Curated core list seeded from the Free
   Exercise DB, plus an alias table and user-defined custom exercises (each with
   an optional spoken alias). The resolver maps a spoken name to an Exercise with
@@ -395,6 +399,14 @@ times a collaborator was called, is testing the wrong thing.
    repeat-to-retry overwrite behaviour, `undo`, personal-record detection,
    rest-timer transitions, and stale-workout recovery. The speech framework is
    mocked only at the "transcript emitted" boundary — nothing lower.
+
+- **App skeleton + voice pipeline (subsystems A+B).** A second SwiftPM package
+  `WorkoutLoggerApp` holds the `@Observable WorkoutSessionModel`, a SwiftData
+  `WorkoutStore` (one `@Model` per session, `Workout` JSON blob keyed on
+  `startedAt`), the pure `readbackPlan` composer, and protocol + fake
+  collaborators. All covered by `swift test`. The Xcode app target (`App/`,
+  generated from `project.yml`) holds only `@main`, one placeholder view, and the
+  `System*` framework wrappers, and is not `swift test`-covered.
 
 ### Slower / metric tests
 
