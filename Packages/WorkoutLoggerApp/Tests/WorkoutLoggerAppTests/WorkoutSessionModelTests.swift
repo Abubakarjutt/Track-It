@@ -96,6 +96,9 @@ struct WorkoutSessionModelTests {
         await rig.model.released()
         #expect(rig.model.isListening == false)
         #expect(rig.model.workout == nil)
+        // A thrown speech path must still be perceptible on an eyes-free app.
+        #expect(rig.haptics.played.contains(.notCaught))
+        #expect(rig.voice.performed.contains(.earcon))
     }
 
     @Test("an unparseable utterance fires notCaught, offers candidates, logs nothing")
@@ -165,6 +168,7 @@ struct WorkoutSessionModelTests {
         )
         await say(rig) // start (clock 1000)
         await say(rig) // set logged — rest starts at 1000, default target 120s
+        #expect(rig.model.restElapsed == 0) // fresh rest period, not last set's stale value
 
         clock = Date(timeIntervalSince1970: 1_030) // 30s elapsed
         rig.model.tick()

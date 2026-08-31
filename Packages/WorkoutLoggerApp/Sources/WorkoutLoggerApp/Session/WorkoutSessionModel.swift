@@ -61,6 +61,11 @@ public final class WorkoutSessionModel {
         do {
             hypotheses = try await transcriptSource.endUtterance()
         } catch {
+            // No transcript means no parse and no engine call — but on an
+            // eyes-free app a silent return is indistinguishable from a freeze,
+            // so the failure still gets a haptic and an earcon.
+            haptics.play(.notCaught)
+            readbackVoice.perform(.earcon)
             return
         }
         apply(hypotheses)
@@ -108,7 +113,13 @@ public final class WorkoutSessionModel {
         speakReadback(results: results)
         captureTapSelect(results: results)
 
-        if loggedASet { restReachedFired = false }
+        if loggedASet {
+            restReachedFired = false
+            // A new set restarts rest; `restStartedAt` re-syncs from the engine
+            // but `restElapsed` is only recomputed in `tick()`, so zero it now
+            // rather than show the previous period's value for up to a second.
+            restElapsed = 0
+        }
     }
 
     private func fireHaptic(results: [ParseResult], loggedASet: Bool, prGrew: Bool) {
