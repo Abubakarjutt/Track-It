@@ -8,12 +8,17 @@ import WorkoutLoggerCore
 @MainActor
 struct SwiftDataWorkoutStoreTests {
 
-    private func makeStore() throws -> SwiftDataWorkoutStore {
+    private func makeStoreAndContext() throws -> (SwiftDataWorkoutStore, ModelContext) {
         let container = try ModelContainer(
             for: WorkoutRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
-        return SwiftDataWorkoutStore(context: ModelContext(container))
+        let context = ModelContext(container)
+        return (SwiftDataWorkoutStore(context: context), context)
+    }
+
+    private func makeStore() throws -> SwiftDataWorkoutStore {
+        try makeStoreAndContext().0
     }
 
     private func workout(startedAt: TimeInterval, reps: Int, endedAt: TimeInterval? = nil) -> Workout {
@@ -29,14 +34,50 @@ struct SwiftDataWorkoutStoreTests {
         )
     }
 
-    @Test("save then history returns the workout")
-    func saveAndRead() throws {
+    @Test("a workout round-trips through the versioned payload envelope, intact")
+    func roundTripThroughVersionedEnvelope() throws {
         let store = try makeStore()
         store.save(workout(startedAt: 1_000, reps: 5))
 
         let history = store.history()
         #expect(history.count == 1)
         #expect(history.first?.entries.first?.sets.first?.reps == 5)
+        #expect(history.first?.entries.first?.sets.first?.loadKilograms == 100)
+        #expect(store.decodeFailureCount == 0)
+    }
+
+    @Test("an undecodable payload is counted, not silently dropped, and good records survive")
+    func undecodablePayloadIsCountedNotDropped() throws {
+        let (store, context) = try makeStoreAndContext()
+        store.save(workout(startedAt: 1_000, reps: 5))
+        context.insert(WorkoutRecord(
+            startedAt: Date(timeIntervalSince1970: 2_000),
+            endedAt: nil,
+            payload: Data("not json".utf8)
+        ))
+        try context.save()
+
+        let history = store.history()
+        #expect(history.count == 1)
+        #expect(history.first?.entries.first?.sets.first?.reps == 5)
+        #expect(store.decodeFailureCount == 1)
+    }
+
+    @Test("a legacy bare (un-enveloped) payload still decodes")
+    func legacyBarePayloadStillDecodes() throws {
+        let (store, context) = try makeStoreAndContext()
+        let bare = workout(startedAt: 3_000, reps: 7)
+        context.insert(WorkoutRecord(
+            startedAt: bare.startedAt,
+            endedAt: bare.endedAt,
+            payload: try JSONEncoder().encode(bare)
+        ))
+        try context.save()
+
+        let history = store.history()
+        #expect(history.count == 1)
+        #expect(history.first?.entries.first?.sets.first?.reps == 7)
+        #expect(store.decodeFailureCount == 0)
     }
 
     @Test("saving the same session twice updates in place")
