@@ -5,7 +5,7 @@
 import Foundation
 
 /// The record of one training session. See CONTEXT.md ("Workout").
-public struct Workout: Equatable, Sendable {
+public struct Workout: Equatable, Sendable, Codable {
     /// One slot per exercise, in the order they were first announced.
     public var entries: [Entry]
     /// When `startWorkout()` opened this workout.
@@ -48,7 +48,7 @@ extension Workout {
 }
 
 /// One exercise's slot within a workout. See CONTEXT.md ("Entry").
-public struct Entry: Equatable, Sendable {
+public struct Entry: Equatable, Sendable, Codable {
     public var exercise: Exercise
     /// The sets performed for this exercise, in order.
     public var sets: [LoggedSet]
@@ -63,7 +63,7 @@ public struct Entry: Equatable, Sendable {
 /// canonicalised values. Load is always kilograms (ADR-0002) — the parser's
 /// as-spoken `ParsedSet` is converted on the way in. Named `LoggedSet` rather
 /// than "Set" (the CONTEXT.md term) to avoid shadowing the standard library.
-public struct LoggedSet: Equatable, Sendable {
+public struct LoggedSet: Equatable, Sendable, Codable {
     public var loadType: LoadType
     public var effort: EffortMeasure
     public var role: SetRole
@@ -120,7 +120,7 @@ public protocol WorkoutStore: AnyObject {
 /// A working set that set a new best estimated 1RM for its exercise. One is
 /// appended to `WorkoutEngine.personalRecords` the instant it happens, for the
 /// app's celebratory readback and haptic (spec story 52).
-public struct PersonalRecord: Equatable, Sendable {
+public struct PersonalRecord: Equatable, Sendable, Codable {
     public let exercise: Exercise
     public let estimatedOneRepMaxKilograms: Double
 

@@ -1,0 +1,38 @@
+name: Trackit
+options:
+  bundleIdPrefix: com.abubakarsahi
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  WorkoutLoggerCore:
+    path: Packages/WorkoutLoggerCore
+  WorkoutLoggerApp:
+    path: Packages/WorkoutLoggerApp
+targets:
+  Trackit:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "6.0"
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/Trackit.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.abubakarsahi.trackit
+    dependencies:
+      - package: WorkoutLoggerCore
+        product: WorkoutLoggerCore
+      - package: WorkoutLoggerApp
+        product: WorkoutLoggerApp
+  TrackitTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Path: App/Tests
+        createIntermediateGroups: true
+        optional: true
+    dependencies:
+      - target: Trackit

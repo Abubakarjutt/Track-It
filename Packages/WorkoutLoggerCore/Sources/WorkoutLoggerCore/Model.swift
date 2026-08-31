@@ -1,7 +1,7 @@
 // Domain types for the voice workout logger. Vocabulary follows CONTEXT.md.
 
 /// A movement in the app's library, e.g. "Barbell Bench Press".
-public struct Exercise: Equatable, Sendable {
+public struct Exercise: Equatable, Sendable, Codable {
     public let name: String
     /// Alternative spoken names that resolve to this exercise, e.g. "OHP".
     public let aliases: [String]
@@ -24,7 +24,7 @@ public struct ExerciseLibrary: Sendable {
 }
 
 /// The unit a load is expressed in.
-public enum MassUnit: Equatable, Sendable {
+public enum MassUnit: Equatable, Sendable, Codable {
     case kilograms
     case pounds
 }
@@ -32,25 +32,25 @@ public enum MassUnit: Equatable, Sendable {
 // The four independent axes of a Set.
 // See docs/adr/0001-set-modelled-as-orthogonal-axes.md.
 
-public enum LoadType: Equatable, Sendable {
+public enum LoadType: Equatable, Sendable, Codable {
     case external
     case bodyweight
     case added
     case assisted
 }
 
-public enum EffortMeasure: Equatable, Sendable {
+public enum EffortMeasure: Equatable, Sendable, Codable {
     case reps
     case duration
     case distance
 }
 
-public enum SetRole: Equatable, Sendable {
+public enum SetRole: Equatable, Sendable, Codable {
     case working
     case warmup
 }
 
-public enum Grouping: Equatable, Sendable {
+public enum Grouping: Equatable, Sendable, Codable {
     case straight
     case superset
     case dropset
