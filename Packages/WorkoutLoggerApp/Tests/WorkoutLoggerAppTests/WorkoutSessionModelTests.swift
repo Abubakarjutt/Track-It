@@ -155,4 +155,45 @@ struct WorkoutSessionModelTests {
         await say(rig)
         #expect(rig.model.tapSelectCandidates == nil)
     }
+
+    @Test("tick fires restReached once after the rest target passes, then not again")
+    func restReachedOnce() async throws {
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"]],
+            now: { clock }
+        )
+        await say(rig) // start (clock 1000)
+        await say(rig) // set logged — rest starts at 1000, default target 120s
+
+        clock = Date(timeIntervalSince1970: 1_030) // 30s elapsed
+        rig.model.tick()
+        #expect(rig.model.restElapsed == 30)
+        #expect(rig.haptics.played.contains(.restReached) == false)
+
+        clock = Date(timeIntervalSince1970: 1_125) // 125s elapsed, past 120
+        rig.model.tick()
+        rig.model.tick() // second tick must not re-fire
+        #expect(rig.haptics.played.filter { $0 == .restReached }.count == 1)
+    }
+
+    @Test("a new set resets the rest-reached latch")
+    func latchResetsPerSet() async throws {
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"], ["bench 100 for 5"]],
+            now: { clock }
+        )
+        await say(rig) // start
+        await say(rig) // set 1, rest starts 1000
+
+        clock = Date(timeIntervalSince1970: 1_130)
+        rig.model.tick() // fires restReached (1st)
+
+        await say(rig) // set 2, rest restarts at 1130, latch cleared
+        clock = Date(timeIntervalSince1970: 1_260) // 130s after 1130
+        rig.model.tick() // fires restReached (2nd)
+
+        #expect(rig.haptics.played.filter { $0 == .restReached }.count == 2)
+    }
 }
