@@ -17,10 +17,11 @@ import WorkoutLoggerApp
 /// continuation on the main actor. This file is not compiled in this
 /// environment; the hop is deliberately explicit rather than clever.
 ///
-/// Hang-path guards (final fix wave F7): three paths used to park a
+/// Hang-path guards (final fix wave F7): four paths used to park a
 /// `CheckedContinuation` that nothing would ever resume — an unsupported locale
 /// (`SFSpeechRecognizer()` is `nil`), a final result that lands before
-/// `endUtterance()`, and a second `released()`. `endUtterance()` now resolves
+/// `endUtterance()`, a stray second `released()`, and a second `released()` that
+/// races the first before `finish` clears it. `endUtterance()` now resolves
 /// immediately in each of those cases instead of awaiting a task that will never
 /// end.
 @MainActor
@@ -97,6 +98,13 @@ final class SystemSpeechRecognizer: TranscriptSource {
             // `finish` cleared everything, or this is a stray second release.
             // There is no task to stop and no result to wait for.
             if task == nil, request == nil {
+                continuation.resume(returning: [])
+                return
+            }
+            // A capture is running but a continuation is already parked — a
+            // second release raced the first. Resolve this one empty rather
+            // than overwrite (and strand) the first.
+            if self.continuation != nil {
                 continuation.resume(returning: [])
                 return
             }
