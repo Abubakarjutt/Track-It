@@ -151,7 +151,11 @@ public final class WorkoutSessionModel {
     }
 
     private func captureTapSelect(results: [ParseResult]) {
-        for case .lowConfidence(_, let candidates) in results {
+        // Only a non-empty shortlist is a tap-select offer. A low-confidence
+        // result with no guesses (e.g. an implausible numeric value) has nothing
+        // to tap, so it falls through to `nil` like a clean parse — never `[]`,
+        // which `resolveTapSelect`'s `!= nil` guard would wrongly act on.
+        for case .lowConfidence(_, let candidates) in results where !candidates.isEmpty {
             tapSelectCandidates = candidates
             return
         }

@@ -127,6 +127,18 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.workout?.entries.first?.sets.first?.reps == 5)
     }
 
+    @Test("a low-confidence result with no best guesses leaves the selection nil, not []")
+    func lowConfidenceWithoutCandidatesLeavesNilSelection() async throws {
+        // "100000 for 5" parses as a straight set whose load is implausible, so
+        // the parser returns `.lowConfidence(.implausibleValue, bestGuesses: [])`.
+        let rig = try makeRig(script: [["start workout"], ["100000 for 5"]])
+        await say(rig); await say(rig)
+
+        #expect(rig.model.tapSelectCandidates == nil)
+        #expect(rig.haptics.played.contains(.notCaught))
+        #expect(rig.model.workout?.entries.isEmpty == true)
+    }
+
     @Test("a set that beats the known best fires the personalRecord haptic")
     func personalRecord() async throws {
         // knownBests below the e1RM of 100x5 (Epley: 100 * 35 / 30 = 116.67)
