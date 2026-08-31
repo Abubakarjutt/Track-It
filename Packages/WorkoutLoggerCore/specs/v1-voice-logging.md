@@ -410,7 +410,7 @@ times a collaborator was called, is testing the wrong thing.
   `WorkoutStore` (one `@Model` per session, `Workout` JSON blob keyed on
   `startedAt`), the pure `readbackPlan` composer, and protocol + fake
   collaborators. All covered by `swift test`. The Xcode app target (`App/`,
-  generated from `project.yml`) holds only `@main`, one placeholder view, and the
+  generated from `project.yml`) holds `@main`, the SwiftUI view tree, and the
   `System*` framework wrappers, and is not `swift test`-covered.
 
 - **Live-workout HUD (subsystem C).** `WorkoutLoggerApp` gains three pure,

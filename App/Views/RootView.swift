@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Combine
 import WorkoutLoggerApp
 
@@ -12,6 +13,7 @@ struct RootView: View {
     let model: WorkoutSessionModel
     let historyUnavailable: Bool
 
+    @Environment(\.scenePhase) private var scenePhase
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -26,9 +28,15 @@ struct RootView: View {
         }
         .preferredColorScheme(.dark)
         .onReceive(tick) { _ in model.tick() }
-        .onChange(of: model.keepScreenAwake, initial: true) { _, awake in
-            UIApplication.shared.isIdleTimerDisabled = awake
-        }
+        .onChange(of: model.keepScreenAwake, initial: true) { _, _ in syncIdleTimer() }
+        .onChange(of: scenePhase) { _, _ in syncIdleTimer() }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+    }
+
+    /// Keep the screen awake only while a workout is open *and* the app is
+    /// foreground-active. iOS ignores `isIdleTimerDisabled` off the active
+    /// phase anyway, but the spec asks us to reset it explicitly on the way out.
+    private func syncIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = (scenePhase == .active && model.keepScreenAwake)
     }
 }

@@ -8,9 +8,31 @@ struct HUDView: View {
     let model: WorkoutSessionModel
     let historyUnavailable: Bool
 
+    /// The two things that can cover the HUD. Tap-select is model-driven and
+    /// wins if both are somehow up; the set list is a local swipe-up.
+    private enum Sheet: Identifiable {
+        case setList, tapSelect
+        var id: Self { self }
+    }
+
     @State private var showingSetList = false
 
     private var hud: HUDProjection { HUDProjection(from: model) }
+
+    private var activeSheet: Binding<Sheet?> {
+        Binding(
+            get: {
+                if hud.tapSelectCandidates != nil { return .tapSelect }
+                return showingSetList ? .setList : nil
+            },
+            set: { newValue in
+                if newValue == nil {
+                    showingSetList = false
+                    model.dismissTapSelect() // no-op when there are no candidates
+                }
+            }
+        )
+    }
 
     var body: some View {
         VStack(spacing: 28) {
@@ -37,17 +59,16 @@ struct HUDView: View {
             talkButton
         }
         .padding(32)
-        .sheet(isPresented: $showingSetList) {
-            SetListSheet(lines: hud.currentEntrySetLines)
-        }
-        .sheet(isPresented: Binding(
-            get: { hud.tapSelectCandidates != nil },
-            set: { if !$0 { /* dismissed without choosing — no-op */ } }
-        )) {
-            TapSelectSheet(
-                candidates: hud.tapSelectCandidates ?? [],
-                onPick: { model.resolveTapSelect($0) }
-            )
+        .sheet(item: activeSheet) { sheet in
+            switch sheet {
+            case .setList:
+                SetListSheet(lines: hud.currentEntrySetLines)
+            case .tapSelect:
+                TapSelectSheet(
+                    candidates: hud.tapSelectCandidates ?? [],
+                    onPick: { model.resolveTapSelect($0) }
+                )
+            }
         }
         .gesture(
             DragGesture(minimumDistance: 20)
