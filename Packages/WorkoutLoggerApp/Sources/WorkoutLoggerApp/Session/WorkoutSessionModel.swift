@@ -2,6 +2,22 @@ import Foundation
 import Observation
 import WorkoutLoggerCore
 
+/// A stale open workout found at launch, plus the two ways to resolve it. The
+/// composition root supplies the closures (`engine.resume` / `closeAbandonedWorkout`);
+/// the model just exposes the pending workout and calls one closure when the
+/// user picks.
+public struct StaleWorkoutRecovery {
+    public let workout: Workout
+    public let onResume: () -> Void
+    public let onDiscard: () -> Void
+
+    public init(workout: Workout, onResume: @escaping () -> Void, onDiscard: @escaping () -> Void) {
+        self.workout = workout
+        self.onResume = onResume
+        self.onDiscard = onDiscard
+    }
+}
+
 /// The single object the view layer binds to. Owns a `WorkoutEngine`, forwards
 /// spoken utterances into it, copies its state out into observed properties, and
 /// drives readback + haptics from what the parser produced.
@@ -22,6 +38,8 @@ public final class WorkoutSessionModel {
     /// Whether the current rest has reached its target. Snapshot of the engine,
     /// refreshed on every `tick()` because it moves with the clock.
     public private(set) var isRestTargetReached = false
+    /// A stale open workout awaiting the user's resume-or-discard choice, or nil.
+    public private(set) var staleRecovery: StaleWorkoutRecovery?
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -31,6 +49,7 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let unit: MassUnit
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let knownBestExercises: Set<String>
 
     @ObservationIgnored private var announcedThisWorkout: Set<String> = []
     @ObservationIgnored private var lastTranscript = ""
@@ -44,7 +63,9 @@ public final class WorkoutSessionModel {
         library: ExerciseLibrary,
         unit: MassUnit = .kilograms,
         capReadbackAtEarcon: Bool = false,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        knownBestExercises: Set<String> = [],
+        staleRecovery: StaleWorkoutRecovery? = nil
     ) {
         self.engine = engine
         self.transcriptSource = transcriptSource
@@ -54,6 +75,36 @@ public final class WorkoutSessionModel {
         self.unit = unit
         self.capReadbackAtEarcon = capReadbackAtEarcon
         self.now = now
+        self.knownBestExercises = knownBestExercises
+        self.staleRecovery = staleRecovery
+        syncFromEngine()
+        seedAnnouncedFromCurrentWorkout()
+    }
+
+    /// When constructed over a workout already in progress (the resume path),
+    /// treat its exercises as already announced this workout so the next readback
+    /// for one is terse.
+    private func seedAnnouncedFromCurrentWorkout() {
+        guard let workout, !workout.isEnded else { return }
+        announcedThisWorkout = Set(workout.entries.map(\.exercise.name))
+    }
+
+    /// The workout the launch prompt is asking about, if any.
+    public var pendingStaleWorkout: Workout? { staleRecovery?.workout }
+
+    /// The user chose to resume the stale workout.
+    public func resumePendingStaleWorkout() {
+        staleRecovery?.onResume()
+        staleRecovery = nil
+        syncFromEngine()
+        seedAnnouncedFromCurrentWorkout()
+    }
+
+    /// The user chose to discard the stale workout. The engine never adopts it;
+    /// the closure closes it in storage at its last-activity time.
+    public func discardPendingStaleWorkout() {
+        staleRecovery?.onDiscard()
+        staleRecovery = nil
         syncFromEngine()
     }
 
@@ -120,6 +171,7 @@ public final class WorkoutSessionModel {
 
         let setsBefore = totalSetCount(workout)
         let prBefore = engine.personalRecords.count
+        let workoutBefore = workout
 
         engine.hear(hypotheses)
         syncFromEngine()
@@ -127,7 +179,11 @@ public final class WorkoutSessionModel {
         let setsAfter = totalSetCount(workout)
         let loggedASet = setsAfter > setsBefore
 
-        fireHaptic(results: results, loggedASet: loggedASet, prGrew: engine.personalRecords.count > prBefore)
+        let genuinePR = engine.personalRecords
+            .dropFirst(prBefore)
+            .contains { isGenuinePersonalRecord($0.exercise.name, before: workoutBefore) }
+
+        fireHaptic(results: results, loggedASet: loggedASet, firePersonalRecord: genuinePR)
         speakReadback(results: results)
         captureTapSelect(results: results)
 
@@ -140,19 +196,26 @@ public final class WorkoutSessionModel {
         }
     }
 
-    private func fireHaptic(results: [ParseResult], loggedASet: Bool, prGrew: Bool) {
-        // Additive by controller ruling: every logged set taps `.logged`; a PR
-        // adds `.personalRecord` on top. The brief's mutually-exclusive form
-        // can't pass `firstSet` because the engine emits a PersonalRecord even
-        // for a baseline-setting first set.
+    private func fireHaptic(results: [ParseResult], loggedASet: Bool, firePersonalRecord: Bool) {
         if loggedASet {
             haptics.play(.logged)
-            if prGrew { haptics.play(.personalRecord) }
+            if firePersonalRecord { haptics.play(.personalRecord) }
             return
         }
         if results.contains(where: { isLowConfidence($0) }) {
             haptics.play(.notCaught)
         }
+    }
+
+    /// A new best is genuine — worth the celebration haptic — when the exercise
+    /// had a seeded historical best, or already had a working set this workout
+    /// before this utterance. A set that merely establishes the first recorded
+    /// number for an exercise is not.
+    private func isGenuinePersonalRecord(_ name: String, before workout: Workout?) -> Bool {
+        if knownBestExercises.contains(name) { return true }
+        return workout?.entries.contains { entry in
+            entry.exercise.name == name && entry.sets.contains { $0.role == .working }
+        } ?? false
     }
 
     private func speakReadback(results: [ParseResult]) {

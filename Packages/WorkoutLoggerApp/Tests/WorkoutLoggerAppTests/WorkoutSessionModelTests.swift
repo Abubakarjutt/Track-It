@@ -22,6 +22,7 @@ struct WorkoutSessionModelTests {
         script: [[String]],
         capAtEarcon: Bool = false,
         knownBests: [String: Double] = [:],
+        knownBestExercises: Set<String>? = nil,
         unit: MassUnit = .kilograms,
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
     ) throws -> Rig {
@@ -39,7 +40,8 @@ struct WorkoutSessionModelTests {
         let model = WorkoutSessionModel(
             engine: engine, transcriptSource: source, readbackVoice: voice,
             haptics: haptics, library: Self.library, unit: unit,
-            capReadbackAtEarcon: capAtEarcon, now: now
+            capReadbackAtEarcon: capAtEarcon, now: now,
+            knownBestExercises: knownBestExercises ?? Set(knownBests.keys)
         )
         return Rig(model: model, source: source, voice: voice, haptics: haptics)
     }
@@ -65,8 +67,11 @@ struct WorkoutSessionModelTests {
 
         #expect(rig.model.workout?.entries.first?.exercise == Self.bench)
         #expect(rig.model.workout?.entries.first?.sets.count == 1)
-        // baseline first set is a PR per WorkoutEngine (ADR-0003); haptics are additive by controller ruling — see ledger
-        #expect(rig.haptics.played == [.logged, .personalRecord])
+        // A baseline-setting first working set logs but does not celebrate: the
+        // engine emits a PersonalRecord for it (ADR-0003), but the model's
+        // genuine-PR gate suppresses the .personalRecord haptic because the
+        // exercise had no seeded best and no earlier working set this workout.
+        #expect(rig.haptics.played == [.logged])
         #expect(rig.model.lastReadback == .speak("Logged. Bench Press, 100 kilograms for 5 reps."))
     }
 
@@ -268,5 +273,120 @@ struct WorkoutSessionModelTests {
         clock = Date(timeIntervalSince1970: 1_200) // 200s > 120
         rig.model.tick()
         #expect(rig.model.isRestTargetReached == true)
+    }
+
+    @Test("a baseline first set is silent on PR, but beating your own opener later celebrates")
+    func genuinePRGate() async throws {
+        let rig = try makeRig(script: [
+            ["start workout"], ["bench 60 for 5"], ["bench 120 for 5"],
+        ])
+        await say(rig)                    // start
+        await say(rig)                    // 60x5 — baseline, no seeded best
+        #expect(rig.haptics.played == [.logged])
+
+        await say(rig)                    // 120x5 — beats the in-workout best
+        #expect(rig.haptics.played == [.logged, .logged, .personalRecord])
+    }
+
+    @Test("a seeded exercise fires the PR haptic on the very first set that beats it")
+    func seededExerciseCelebratesFirstSet() async throws {
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"]],
+            knownBests: ["Bench Press": 50]
+        )
+        await say(rig); await say(rig)
+        #expect(rig.haptics.played == [.logged, .personalRecord])
+    }
+
+    @Test("resuming a workout seeds announced exercises so their next readback is terse")
+    func resumeSeedsAnnouncedExercises() async throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let now = { Date(timeIntervalSince1970: 5_000) }
+        let engine = WorkoutEngine(store: store, library: Self.library, now: now)
+        let prior = Workout(
+            entries: [Entry(exercise: Self.bench, sets: [
+                LoggedSet(loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                          loadKilograms: 100, reps: 5, loggedAt: Date(timeIntervalSince1970: 10)),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 10)
+        )
+        engine.resume(prior)
+
+        let source = ScriptedTranscriptSource([["bench 100 for 5"]])
+        let voice = SpyReadbackVoice()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: source, readbackVoice: voice,
+            haptics: SpyHaptics(), library: Self.library, now: now
+        )
+
+        model.pressed(); await model.released()
+
+        // Bench was already in the resumed workout, so it is not "new this
+        // workout" — readback is terse, not the full "Logged. Bench Press, ...".
+        #expect(model.lastReadback == .speak("100 for 5"))
+    }
+
+    @Test("pendingStaleWorkout resolves via resume")
+    func staleRecoveryResume() async throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let stale = Workout(
+            entries: [Entry(exercise: Self.bench, sets: [
+                LoggedSet(loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                          loadKilograms: 100, reps: 5, loggedAt: Date(timeIntervalSince1970: 10)),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 10)
+        )
+        var resumed = false
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: ScriptedTranscriptSource([]),
+            readbackVoice: SpyReadbackVoice(), haptics: SpyHaptics(), library: Self.library,
+            staleRecovery: .init(
+                workout: stale,
+                onResume: { resumed = true; engine.resume(stale) },
+                onDiscard: { }
+            )
+        )
+
+        #expect(model.pendingStaleWorkout == stale)
+        model.resumePendingStaleWorkout()
+
+        #expect(resumed)
+        #expect(model.pendingStaleWorkout == nil)
+        #expect(model.workout?.entries.first?.exercise == Self.bench)
+    }
+
+    @Test("pendingStaleWorkout resolves via discard without adopting the workout")
+    func staleRecoveryDiscard() async throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let stale = Workout(
+            entries: [Entry(exercise: Self.bench, sets: [])],
+            startedAt: Date(timeIntervalSince1970: 10)
+        )
+        var discarded = false
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: ScriptedTranscriptSource([]),
+            readbackVoice: SpyReadbackVoice(), haptics: SpyHaptics(), library: Self.library,
+            staleRecovery: .init(workout: stale, onResume: { }, onDiscard: { discarded = true })
+        )
+
+        model.discardPendingStaleWorkout()
+
+        #expect(discarded)
+        #expect(model.pendingStaleWorkout == nil)
+        #expect(model.workout == nil)   // engine never adopted it
     }
 }
