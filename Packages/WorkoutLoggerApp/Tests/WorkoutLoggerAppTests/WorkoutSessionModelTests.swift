@@ -63,7 +63,8 @@ struct WorkoutSessionModelTests {
 
         #expect(rig.model.workout?.entries.first?.exercise == Self.bench)
         #expect(rig.model.workout?.entries.first?.sets.count == 1)
-        #expect(rig.haptics.played.contains(.logged))
+        // baseline first set is a PR per WorkoutEngine (ADR-0003); haptics are additive by controller ruling — see ledger
+        #expect(rig.haptics.played == [.logged, .personalRecord])
         #expect(rig.model.lastReadback == .speak("Logged. Bench Press, 100 kilograms for 5 reps."))
     }
 
@@ -113,9 +114,12 @@ struct WorkoutSessionModelTests {
 
     @Test("resolveTapSelect logs the set against the chosen exercise and clears candidates")
     func tapSelectResolution() async throws {
-        // "bench bruss 100 for 5" — resolves in the 0.60..<0.85 band: close
-        // enough to surface "Bench Press" as a candidate, below the auto-log bar,
-        // and weak enough that the post-processor's name-repair leaves it alone.
+        // Fixture depends on core's (private) fuzzy matcher landing "bench bruss" in the
+        // low-confidence band: editSimilarity("bench bruss","bench press") ≈ 0.818
+        // (Levenshtein 2 / max length 11). It must stay: ≥ resolveThreshold (0.60) so a
+        // candidate surfaces, < confidentMatchThreshold (0.85) so it isn't auto-logged, and
+        // < 0.85 so PostProcessor.biasExerciseName leaves the spoken name alone. A
+        // behaviour-preserving change to levenshtein or those constants will break this test.
         let rig = try makeRig(script: [["start workout"], ["bench bruss 100 for 5"]])
         await say(rig); await say(rig)
         try #require(rig.model.tapSelectCandidates?.isEmpty == false)
@@ -123,6 +127,7 @@ struct WorkoutSessionModelTests {
         rig.model.resolveTapSelect(Self.bench)
 
         #expect(rig.model.tapSelectCandidates == nil)
+        #expect(rig.model.workout?.entries.count == 1)
         #expect(rig.model.workout?.entries.first?.exercise == Self.bench)
         #expect(rig.model.workout?.entries.first?.sets.first?.reps == 5)
     }
