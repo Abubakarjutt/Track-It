@@ -615,6 +615,23 @@ struct WorkoutEngineTests {
         #expect(engine.workout?.entries.first?.sets.last?.supersetRunID == 3)
     }
 
+    @Test("a resumed workout ends like any other: endedAt stamped, persisted, no longer open")
+    func resumeThenEnd() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        var clock = Date(timeIntervalSince1970: 10_000)
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]), now: { clock })
+        engine.resume(benchWorkout(sets: [workingSet(kg: 100, reps: 5, at: 10)]))
+
+        clock = Date(timeIntervalSince1970: 12_345)
+        engine.endWorkout()
+
+        #expect(engine.workout?.isEnded == true)
+        #expect(engine.restStartedAt == nil)
+        #expect(store.saved.last?.endedAt == Date(timeIntervalSince1970: 12_345))
+        #expect(store.saved.last?.entries.first?.sets.count == 1)
+    }
+
     @Test("resume ignores an already-ended workout")
     func resumeIgnoresEndedWorkout() {
         let store = InMemoryWorkoutStore()

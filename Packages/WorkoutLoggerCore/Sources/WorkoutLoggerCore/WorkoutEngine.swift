@@ -262,6 +262,11 @@ public final class WorkoutEngine {
     /// `PersonalRecord` is re-announced for work already in the record — but the
     /// PR bar is seeded from `knownBests` folded with that work, so a set logged
     /// after resuming is a record only if it beats both history and this session.
+    ///
+    /// Precondition: no workout is already open. The only caller is the launch
+    /// composition root, before any `startWorkout`. Unlike `startWorkout()` this
+    /// does not close a workout in progress — it overwrites `self.workout`
+    /// wholesale — so calling it mid-session would silently drop the open one.
     public func resume(_ workout: Workout) {
         guard !workout.isEnded else { return }
 
