@@ -22,6 +22,7 @@ struct WorkoutSessionModelTests {
         script: [[String]],
         capAtEarcon: Bool = false,
         knownBests: [String: Double] = [:],
+        unit: MassUnit = .kilograms,
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
     ) throws -> Rig {
         let container = try ModelContainer(
@@ -30,14 +31,15 @@ struct WorkoutSessionModelTests {
         )
         let store = SwiftDataWorkoutStore(context: ModelContext(container))
         let engine = WorkoutEngine(
-            store: store, library: Self.library, knownBests: knownBests, now: now
+            store: store, library: Self.library, unit: unit, knownBests: knownBests, now: now
         )
         let source = ScriptedTranscriptSource(script)
         let voice = SpyReadbackVoice()
         let haptics = SpyHaptics()
         let model = WorkoutSessionModel(
             engine: engine, transcriptSource: source, readbackVoice: voice,
-            haptics: haptics, library: Self.library, capReadbackAtEarcon: capAtEarcon, now: now
+            haptics: haptics, library: Self.library, unit: unit,
+            capReadbackAtEarcon: capAtEarcon, now: now
         )
         return Rig(model: model, source: source, voice: voice, haptics: haptics)
     }
@@ -235,5 +237,36 @@ struct WorkoutSessionModelTests {
         rig.model.tick() // fires restReached (2nd)
 
         #expect(rig.haptics.played.filter { $0 == .restReached }.count == 2)
+    }
+
+    @Test("displayUnit surfaces the injected unit")
+    func displayUnitSurfacesInjectedUnit() throws {
+        #expect(try makeRig(script: []).model.displayUnit == .kilograms)
+        #expect(try makeRig(script: [], unit: .pounds).model.displayUnit == .pounds)
+    }
+
+    @Test("keepScreenAwake is true only while a workout is open")
+    func keepScreenAwakeReflectsOpenWorkout() async throws {
+        let rig = try makeRig(script: [["start workout"], ["end workout"]])
+        #expect(rig.model.keepScreenAwake == false)
+        await say(rig)
+        #expect(rig.model.keepScreenAwake == true)
+        await say(rig)
+        #expect(rig.model.keepScreenAwake == false)
+    }
+
+    @Test("restTargetSeconds and isRestTargetReached track the engine")
+    func restTargetFieldsTrackEngine() async throws {
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"]], now: { clock }
+        )
+        await say(rig); await say(rig)
+        #expect(rig.model.restTargetSeconds == 120)
+        #expect(rig.model.isRestTargetReached == false)
+
+        clock = Date(timeIntervalSince1970: 1_200) // 200s > 120
+        rig.model.tick()
+        #expect(rig.model.isRestTargetReached == true)
     }
 }

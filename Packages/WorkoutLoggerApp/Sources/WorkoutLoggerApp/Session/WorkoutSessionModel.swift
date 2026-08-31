@@ -15,6 +15,13 @@ public final class WorkoutSessionModel {
     public private(set) var isListening = false
     public private(set) var tapSelectCandidates: [Exercise]?
     public private(set) var lastReadback: ReadbackPlan?
+    /// The rest target the timer counts toward right now — the active exercise's
+    /// template value if one is armed, else the engine default. For a "1:23 / 2:00"
+    /// style display.
+    public private(set) var restTargetSeconds: TimeInterval = WorkoutEngine.defaultRestTargetSeconds
+    /// Whether the current rest has reached its target. Snapshot of the engine,
+    /// refreshed on every `tick()` because it moves with the clock.
+    public private(set) var isRestTargetReached = false
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -50,6 +57,15 @@ public final class WorkoutSessionModel {
         syncFromEngine()
     }
 
+    /// The unit the HUD formats loads in — the injected preference.
+    public var displayUnit: MassUnit { unit }
+
+    /// True while a workout is open; the view maps it to `isIdleTimerDisabled`.
+    public var keepScreenAwake: Bool {
+        guard let workout else { return false }
+        return !workout.isEnded
+    }
+
     public func pressed() {
         transcriptSource.beginUtterance()
         isListening = true
@@ -80,9 +96,11 @@ public final class WorkoutSessionModel {
     public func tick() {
         guard let startedAt = restStartedAt else {
             restElapsed = 0
+            isRestTargetReached = false
             return
         }
         restElapsed = now().timeIntervalSince(startedAt)
+        isRestTargetReached = engine.isRestTargetReached
         if engine.isRestTargetReached, !restReachedFired {
             restReachedFired = true
             haptics.play(.restReached)
@@ -168,6 +186,8 @@ public final class WorkoutSessionModel {
         workout = engine.workout
         personalRecords = engine.personalRecords
         restStartedAt = engine.restStartedAt
+        restTargetSeconds = engine.currentRestTargetSeconds
+        isRestTargetReached = engine.isRestTargetReached
     }
 
     // MARK: - Small helpers
