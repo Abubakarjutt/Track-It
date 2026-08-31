@@ -199,11 +199,11 @@ public final class WorkoutSessionModel {
     /// token) with `name`, keeping the numeric tail. "skuat 100 for 5" -> "Squat 100 for 5".
     private func rewrite(_ transcript: String, toName name: String) -> String {
         let tokens = transcript.split(separator: " ").map(String.init)
-        // "First number" tolerant of trailing punctuation / stuck-on units —
-        // "5.", "5,", "100kg" are all numeric-ish. `Int($0)` alone misses them.
-        guard let firstNumber = tokens.firstIndex(where: { $0.contains(where: \.isNumber) }),
-              firstNumber < tokens.count
-        else { return name }
+        // Split at the first clean integer token — the "<load>" or the "<n>" of
+        // "<name> <n>". A unit-suffixed or punctuated token ("100kg", "5.") is
+        // not a load the parser will accept anyway, so slicing there only yields
+        // a transcript that fails to re-parse; keep the predicate strict.
+        guard let firstNumber = tokens.firstIndex(where: { Int($0) != nil }) else { return name }
         return ([name] + tokens[firstNumber...]).joined(separator: " ")
     }
 

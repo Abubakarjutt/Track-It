@@ -144,6 +144,25 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.workout?.entries.isEmpty == true)
     }
 
+    @Test("resolveTapSelect slices the rewrite at the first clean integer token")
+    func rewriteSlicesAtFirstIntegerToken() async throws {
+        // The stored transcript here has a unit-suffixed leading numeric token
+        // ("100kg"). `rewrite` must split at the first *clean integer* ("5"), so
+        // the chosen exercise still logs a set. Widening the split predicate to
+        // any digit-bearing token would slice at "100kg", producing
+        // "Bench Press 100kg for 5" — which the parser rejects, logging nothing.
+        let rig = try makeRig(script: [["start workout"], ["bench bruss 100kg for 5"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates?.isEmpty == false)
+
+        rig.model.resolveTapSelect(Self.bench)
+
+        #expect(rig.model.tapSelectCandidates == nil)
+        #expect(rig.model.workout?.entries.count == 1)
+        #expect(rig.model.workout?.entries.first?.exercise == Self.bench)
+        #expect(rig.model.workout?.entries.first?.sets.first?.reps == 5)
+    }
+
     @Test("a set that beats the known best fires the personalRecord haptic")
     func personalRecord() async throws {
         // knownBests below the e1RM of 100x5 (Epley: 100 * 35 / 30 = 116.67)
