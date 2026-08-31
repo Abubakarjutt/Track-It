@@ -404,6 +404,12 @@ times a collaborator was called, is testing the wrong thing.
   press-to-confirm latency, tracked against the launch gate (≥ 85%
   no-correction, ≤ 3 s median). Treated as a tracked metric first; promoted to a
   hard CI gate once stable. Built lazily, after the grammar settles.
+  - The package-level slice exists now: `score([CorpusEntry], library:)` drives
+    canned recogniser n-best hypotheses through the real `postProcess → parse`
+    chain and reports the no-correction rate, with the ≥ 85% floor asserted as a
+    tracked metric. The recogniser front-end (audio → hypotheses) and the latency
+    half wait for the app shell; when they land, the corpus swaps its hand-authored
+    hypothesis lists for recogniser output and the same scorer runs.
 
 ### UI tests
 
