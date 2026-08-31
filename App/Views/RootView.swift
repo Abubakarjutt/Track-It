@@ -18,7 +18,7 @@ struct RootView: View {
                 .font(.title2)
 
             if let set = model.workout?.entries.last?.sets.last {
-                Text("\(set.loadKilograms.map { "\($0) kg " } ?? "")\(set.reps.map { "x \($0)" } ?? "")")
+                Text("\(set.loadKilograms.map { $0 == $0.rounded() ? "\(Int($0)) kg " : "\($0) kg " } ?? "")\(set.reps.map { "x \($0)" } ?? "")")
                     .font(.largeTitle.bold())
             }
 
