@@ -144,6 +144,9 @@ public final class WorkoutSessionModel {
             tapSelectCandidates = candidates
             return
         }
+        // A clean parse resolves any pending disambiguation — including one
+        // answered by simply re-speaking the set — so drop the stale list.
+        tapSelectCandidates = nil
     }
 
     private func syncFromEngine() {
@@ -181,7 +184,11 @@ public final class WorkoutSessionModel {
     /// token) with `name`, keeping the numeric tail. "skuat 100 for 5" -> "Squat 100 for 5".
     private func rewrite(_ transcript: String, toName name: String) -> String {
         let tokens = transcript.split(separator: " ").map(String.init)
-        guard let firstNumber = tokens.firstIndex(where: { Int($0) != nil }) else { return name }
+        // "First number" tolerant of trailing punctuation / stuck-on units —
+        // "5.", "5,", "100kg" are all numeric-ish. `Int($0)` alone misses them.
+        guard let firstNumber = tokens.firstIndex(where: { $0.contains(where: \.isNumber) }),
+              firstNumber < tokens.count
+        else { return name }
         return ([name] + tokens[firstNumber...]).joined(separator: " ")
     }
 

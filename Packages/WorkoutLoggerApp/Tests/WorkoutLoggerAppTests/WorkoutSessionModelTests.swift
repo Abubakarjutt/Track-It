@@ -97,4 +97,62 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.isListening == false)
         #expect(rig.model.workout == nil)
     }
+
+    @Test("an unparseable utterance fires notCaught, offers candidates, logs nothing")
+    func parseFailure() async throws {
+        let rig = try makeRig(script: [["start workout"], ["flurbo"]])
+        await say(rig); await say(rig)
+
+        #expect(rig.haptics.played.contains(.notCaught))
+        #expect(rig.model.tapSelectCandidates != nil)
+        #expect(rig.model.workout?.entries.isEmpty == true)
+    }
+
+    @Test("resolveTapSelect logs the set against the chosen exercise and clears candidates")
+    func tapSelectResolution() async throws {
+        // "bench bruss 100 for 5" — resolves in the 0.60..<0.85 band: close
+        // enough to surface "Bench Press" as a candidate, below the auto-log bar,
+        // and weak enough that the post-processor's name-repair leaves it alone.
+        let rig = try makeRig(script: [["start workout"], ["bench bruss 100 for 5"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates?.isEmpty == false)
+
+        rig.model.resolveTapSelect(Self.bench)
+
+        #expect(rig.model.tapSelectCandidates == nil)
+        #expect(rig.model.workout?.entries.first?.exercise == Self.bench)
+        #expect(rig.model.workout?.entries.first?.sets.first?.reps == 5)
+    }
+
+    @Test("a set that beats the known best fires the personalRecord haptic")
+    func personalRecord() async throws {
+        // knownBests below the e1RM of 100x5 (Epley: 100 * 35 / 30 = 116.67)
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"]],
+            knownBests: ["Bench Press": 100]
+        )
+        await say(rig); await say(rig)
+
+        #expect(rig.haptics.played.contains(.personalRecord))
+        #expect(rig.model.personalRecords.count == 1)
+    }
+
+    @Test("a personal-record set fires the logged tap then the PR celebration")
+    func prAddsToLoggedHaptic() async throws {
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"]],
+            knownBests: ["Bench Press": 100]
+        )
+        await say(rig); await say(rig)
+        #expect(rig.haptics.played == [.logged, .personalRecord])
+    }
+
+    @Test("a clean utterance after a low-confidence one clears the candidate list")
+    func cleanUtteranceClearsCandidates() async throws {
+        let rig = try makeRig(script: [["start workout"], ["flurbo"], ["bench 100 for 5"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates != nil)
+        await say(rig)
+        #expect(rig.model.tapSelectCandidates == nil)
+    }
 }
