@@ -518,6 +518,115 @@ struct WorkoutEngineTests {
         #expect(engine.workout?.isEnded == true)
         #expect(store.saved.last?.isEnded == true)
     }
+
+    // MARK: - resume(_:)
+
+    private func benchWorkout(
+        startedAt: Date = Date(timeIntervalSince1970: 0),
+        sets: [LoggedSet]
+    ) -> Workout {
+        Workout(
+            entries: [Entry(exercise: Exercise(name: "Barbell Bench Press", aliases: ["bench"]), sets: sets)],
+            startedAt: startedAt
+        )
+    }
+
+    private func workingSet(
+        kg: Double, reps: Int, at t: TimeInterval, run: Int? = nil
+    ) -> LoggedSet {
+        LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: run == nil ? .straight : .superset,
+            loadKilograms: kg, reps: reps, supersetRunID: run, loggedAt: Date(timeIntervalSince1970: t)
+        )
+    }
+
+    @Test("resume adopts an unfinished workout and new sets attach to its last entry")
+    func resumeAttachesNewSets() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        let prior = benchWorkout(sets: [workingSet(kg: 100, reps: 5, at: 10)])
+
+        engine.resume(prior)
+        engine.hear(["100 for 3"]) // bare set — attaches to the adopted active entry
+
+        #expect(engine.workout?.entries.count == 1)
+        #expect(engine.workout?.entries.first?.sets.count == 2)
+        #expect(engine.workout?.entries.first?.sets.last?.reps == 3)
+        #expect(store.saved.last?.entries.first?.sets.count == 2)
+    }
+
+    @Test("resume then undo drops the last pre-existing set")
+    func resumeThenUndo() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.resume(benchWorkout(sets: [
+            workingSet(kg: 100, reps: 5, at: 10), workingSet(kg: 100, reps: 5, at: 200),
+        ]))
+
+        engine.hear(["undo"])
+
+        #expect(engine.workout?.entries.first?.sets.count == 1)
+    }
+
+    @Test("resume does not re-celebrate history; a set below the in-workout best is no PR, above it is")
+    func resumePersonalRecordBar() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        // existing set: e1RM(100,5) = 100 * 35 / 30 ≈ 116.67
+        engine.resume(benchWorkout(sets: [workingSet(kg: 100, reps: 5, at: 10)]))
+        #expect(engine.personalRecords.isEmpty)
+
+        engine.hear(["90 for 5"]) // e1RM ≈ 105 — below
+        #expect(engine.personalRecords.isEmpty)
+
+        engine.hear(["120 for 5"]) // e1RM = 140 — above
+        #expect(engine.personalRecords.count == 1)
+        #expect(engine.personalRecords.first?.exercise == bench)
+    }
+
+    @Test("resume clears any pre-relaunch rest; rest restarts from the next set")
+    func resumeClearsRest() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        var clock = Date(timeIntervalSince1970: 10_000)
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]), now: { clock })
+        engine.resume(benchWorkout(sets: [workingSet(kg: 100, reps: 5, at: 10)]))
+
+        #expect(engine.restStartedAt == nil)
+
+        clock = Date(timeIntervalSince1970: 10_050)
+        engine.hear(["100 for 5"])
+        #expect(engine.restStartedAt == Date(timeIntervalSince1970: 10_050))
+    }
+
+    @Test("resume numbers a new superset run above any already in the adopted workout")
+    func resumeSupersetNumbering() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.resume(benchWorkout(sets: [workingSet(kg: 100, reps: 5, at: 10, run: 2)]))
+
+        engine.hear(["superset"])
+        engine.hear(["100 for 5"])
+
+        #expect(engine.workout?.entries.first?.sets.last?.supersetRunID == 3)
+    }
+
+    @Test("resume ignores an already-ended workout")
+    func resumeIgnoresEndedWorkout() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: .empty)
+        var ended = benchWorkout(sets: [workingSet(kg: 100, reps: 5, at: 10)])
+        ended.endedAt = Date(timeIntervalSince1970: 300)
+
+        engine.resume(ended)
+
+        #expect(engine.workout == nil)
+        #expect(store.saved.isEmpty)
+    }
 }
 
 /// Test double for `WorkoutStore` — records every persisted revision in order.
