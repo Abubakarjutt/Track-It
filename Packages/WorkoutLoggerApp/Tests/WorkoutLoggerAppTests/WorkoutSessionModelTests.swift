@@ -1,0 +1,100 @@
+import Testing
+import SwiftData
+import Foundation
+import WorkoutLoggerCore
+@testable import WorkoutLoggerApp
+
+@Suite("WorkoutSessionModel")
+@MainActor
+struct WorkoutSessionModelTests {
+
+    private static let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+    private static let library = ExerciseLibrary([bench])
+
+    private struct Rig {
+        let model: WorkoutSessionModel
+        let source: ScriptedTranscriptSource
+        let voice: SpyReadbackVoice
+        let haptics: SpyHaptics
+    }
+
+    private func makeRig(
+        script: [[String]],
+        capAtEarcon: Bool = false,
+        knownBests: [String: Double] = [:],
+        now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
+    ) throws -> Rig {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(
+            store: store, library: Self.library, knownBests: knownBests, now: now
+        )
+        let source = ScriptedTranscriptSource(script)
+        let voice = SpyReadbackVoice()
+        let haptics = SpyHaptics()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: source, readbackVoice: voice,
+            haptics: haptics, library: Self.library, capReadbackAtEarcon: capAtEarcon, now: now
+        )
+        return Rig(model: model, source: source, voice: voice, haptics: haptics)
+    }
+
+    private func say(_ rig: Rig) async {
+        rig.model.pressed()
+        await rig.model.released()
+    }
+
+    @Test("a start-workout utterance opens a workout")
+    func startsWorkout() async throws {
+        let rig = try makeRig(script: [["start workout"]])
+        await say(rig)
+        #expect(rig.model.workout != nil)
+        #expect(rig.model.workout?.isEnded == false)
+    }
+
+    @Test("a spoken set is logged, fires the logged haptic, and reads back full the first time")
+    func firstSet() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"]])
+        await say(rig) // start
+        await say(rig) // bench 100 for 5
+
+        #expect(rig.model.workout?.entries.first?.exercise == Self.bench)
+        #expect(rig.model.workout?.entries.first?.sets.count == 1)
+        #expect(rig.haptics.played.contains(.logged))
+        #expect(rig.model.lastReadback == .speak("Logged. Bench Press, 100 kilograms for 5 reps."))
+    }
+
+    @Test("the second set of the same exercise reads back terse")
+    func secondSetTerse() async throws {
+        let rig = try makeRig(script: [
+            ["start workout"], ["bench 100 for 5"], ["bench 100 for 5"],
+        ])
+        await say(rig); await say(rig); await say(rig)
+
+        #expect(rig.model.workout?.entries.first?.sets.count == 2)
+        #expect(rig.model.lastReadback == .speak("100 for 5"))
+    }
+
+    @Test("capReadbackAtEarcon makes every readback an earcon")
+    func earconCap() async throws {
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"]], capAtEarcon: true
+        )
+        await say(rig); await say(rig)
+        #expect(rig.model.lastReadback == .earcon)
+    }
+
+    @Test("released() resets isListening even when the source throws")
+    func throwingSourceResetsListening() async throws {
+        let rig = try makeRig(script: [])
+        rig.source.throwWhenExhausted = true
+        rig.model.pressed()
+        #expect(rig.model.isListening == true)
+        await rig.model.released()
+        #expect(rig.model.isListening == false)
+        #expect(rig.model.workout == nil)
+    }
+}
