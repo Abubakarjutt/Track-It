@@ -17,17 +17,20 @@ public enum HapticCue: Equatable, Sendable {
 
 /// Push-to-talk speech capture. `beginUtterance` on press, `endUtterance` on
 /// release yields the recogniser's final n-best hypotheses (best first).
+@MainActor
 public protocol TranscriptSource: AnyObject {
     func beginUtterance()
     func endUtterance() async throws -> [String]
 }
 
 /// Speaks a readback plan (or plays the earcon tone).
+@MainActor
 public protocol ReadbackVoice: AnyObject {
     func perform(_ plan: ReadbackPlan)
 }
 
 /// Plays one of the fixed haptic patterns.
+@MainActor
 public protocol Haptics: AnyObject {
     func play(_ cue: HapticCue)
 }

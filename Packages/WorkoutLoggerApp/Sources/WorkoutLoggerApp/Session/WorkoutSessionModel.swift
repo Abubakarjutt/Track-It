@@ -59,14 +59,7 @@ public final class WorkoutSessionModel {
         isListening = false
         let hypotheses: [String]
         do {
-            // `TranscriptSource` is not `Sendable` and its `endUtterance()` is a
-            // `nonisolated async` requirement, so calling it from this
-            // `@MainActor` method trips region-based "sending" analysis under
-            // language mode 6. The model owns the only reference and awaits the
-            // one call to completion before touching it again, so hop the
-            // existential across on a single-field box.
-            let source = Unsafe(transcriptSource)
-            hypotheses = try await source.value.endUtterance()
+            hypotheses = try await transcriptSource.endUtterance()
         } catch {
             return
         }
@@ -119,8 +112,10 @@ public final class WorkoutSessionModel {
     }
 
     private func fireHaptic(results: [ParseResult], loggedASet: Bool, prGrew: Bool) {
-        // Every logged set gets the confirming `.logged` tap; a set that also set
-        // a new best rings the `.personalRecord` celebration on top of it.
+        // Additive by controller ruling: every logged set taps `.logged`; a PR
+        // adds `.personalRecord` on top. The brief's mutually-exclusive form
+        // can't pass `firstSet` because the engine emits a PersonalRecord even
+        // for a baseline-setting first set.
         if loggedASet {
             haptics.play(.logged)
             if prGrew { haptics.play(.personalRecord) }
@@ -196,12 +191,4 @@ public final class WorkoutSessionModel {
     private func isStartWorkout(_ r: ParseResult) -> Bool {
         if case .command(.startWorkout) = r { return true }; return false
     }
-}
-
-/// One-field transfer box: lets a non-`Sendable` value cross a `nonisolated
-/// async` call boundary when the caller can guarantee it is not used
-/// concurrently. Used only for the single awaited `endUtterance()` hop.
-private struct Unsafe<Value>: @unchecked Sendable {
-    let value: Value
-    init(_ value: Value) { self.value = value }
 }

@@ -2,6 +2,7 @@ import Testing
 @testable import WorkoutLoggerApp
 
 @Suite("Fakes")
+@MainActor
 struct FakesTests {
 
     @Test("scripted transcript source dequeues utterances in order, then empties")
