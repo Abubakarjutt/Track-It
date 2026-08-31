@@ -68,5 +68,5 @@ private func unitWord(_ unit: MassUnit?) -> String {
 }
 
 private func number(_ value: Double) -> String {
-    value == value.rounded() ? String(Int(value)) : String(value)
+    numberString(value)
 }
