@@ -274,6 +274,11 @@ logger.
   persists every set on receipt (no in-memory buffer held until "end"), detects a
   stale active workout on launch, runs personal-record detection, drives
   rest-timer state.
+  The app-shell resume path is `WorkoutEngine.resume(_:)` (subsystem C): it
+  adopts a not-yet-ended `Workout` found in storage at launch, attaching new
+  sets to its last entry, restarting the rest timer, and seeding the
+  personal-record bar from history plus the resumed workout's own sets without
+  re-announcing past records.
 - **Readback.** Given a parser result, chooses terse TTS, full TTS, or an earcon.
   A new exercise this workout, or a low-confidence parse result, forces full TTS;
   a command gets an earcon; a user setting can cap everything at earcon only.
@@ -407,6 +412,18 @@ times a collaborator was called, is testing the wrong thing.
   collaborators. All covered by `swift test`. The Xcode app target (`App/`,
   generated from `project.yml`) holds only `@main`, one placeholder view, and the
   `System*` framework wrappers, and is not `swift test`-covered.
+
+- **Live-workout HUD (subsystem C).** `WorkoutLoggerApp` gains three pure,
+  `swift test`-covered types — `HUDProjection` (session-model snapshot →
+  glanceable HUD fields), `LaunchDecision` + `closeAbandonedWorkout` (classify
+  and close the open workout found at launch), and `StoreProvisioning` (on-disk
+  container or an in-memory `.degraded` fallback so a corrupt store cannot crash
+  launch) — plus a `StaleWorkoutRecovery` seam on `WorkoutSessionModel` and a
+  genuine-personal-record gate on its haptic. The HUD view tree in `App/`
+  (`HUDView`, `SetListSheet`, `TapSelectSheet`, `LaunchGateView`) is a thin
+  renderer over `HUDProjection` and is not `swift test`-covered. Mid-workout
+  inline set editing is deferred to subsystem D; the swipe-up set list is
+  read-only.
 
 ### Slower / metric tests
 
