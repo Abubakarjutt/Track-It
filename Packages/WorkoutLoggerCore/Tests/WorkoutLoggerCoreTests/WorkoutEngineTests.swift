@@ -707,6 +707,91 @@ struct WorkoutEngineTests {
         engine.editSet(at: 5, 0, with: dummy)          // entry index out of range
         #expect(store.saved.count == savesBefore)      // nothing persisted
     }
+
+    @Test("removeSet drops an emptied earlier entry and keeps the active pointer on the current exercise")
+    func removeSetRepairsActiveEntryAfterEmptyingEarlierEntry() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let squat = Exercise(name: "Squat", aliases: ["squat"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench, squat]))
+        engine.startWorkout()
+        engine.hear(["bench"]); engine.hear(["100 for 5"])   // entry 0, one set
+        engine.hear(["squat"]); engine.hear(["140 for 5"])   // entry 1, active
+        engine.hear(["bench"])                               // active moves back to entry 0
+
+        engine.removeSet(at: 0, 0)                           // empties + drops entry 0; squat shifts to index 0
+
+        #expect(engine.workout?.entries.map(\.exercise) == [squat])
+        engine.hear(["150 for 3"])                           // next set must land on squat
+        #expect(engine.workout?.entries[0].sets.map(\.loadKilograms) == [140, 150])
+    }
+
+    @Test("removeSet keeps a set it did not touch and persists the smaller workout")
+    func removeSetDropsOnlyTheChosenSet() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"]); engine.hear(["110 for 3"]); engine.hear(["105 for 4"])
+
+        engine.removeSet(at: 0, 1)
+
+        #expect(engine.workout?.entries[0].sets.map(\.loadKilograms) == [100, 105])
+        #expect(store.saved.last?.entries[0].sets.count == 2)
+    }
+
+    @Test("removeSet re-derives the PR bar so a later set beating the remaining best is caught")
+    func removeSetReDerivesPersonalRecordBar() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"])   // e1RM 116.67 — PR, bar 116.67
+        engine.hear(["120 for 5"])   // e1RM 140    — PR, bar 140
+        #expect(engine.personalRecords.count == 2)
+
+        engine.removeSet(at: 0, 1)   // drop the 120x5; bar re-derives down to 116.67
+
+        engine.hear(["110 for 5"])   // e1RM 128.33 — above 116.67
+        #expect(engine.personalRecords.count == 3)
+    }
+
+    @Test("removeSet is a no-op with no open workout or an out-of-range index")
+    func removeSetGuards() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+
+        engine.removeSet(at: 0, 0)
+        #expect(store.saved.isEmpty)
+
+        engine.startWorkout()
+        engine.hear(["bench"]); engine.hear(["100 for 5"])
+        let savesBefore = store.saved.count
+        engine.removeSet(at: 0, 9)
+        engine.removeSet(at: 3, 0)
+        #expect(store.saved.count == savesBefore)
+    }
+
+    @Test("removeSet leaves the rest timer running")
+    func removeSetLeavesRestRunning() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]), now: { clock })
+        engine.startWorkout()
+        engine.hear(["bench"])
+        clock = Date(timeIntervalSince1970: 1_050)
+        engine.hear(["100 for 5"]); engine.hear(["110 for 3"])
+        let restBefore = engine.restStartedAt
+
+        engine.removeSet(at: 0, 0)
+
+        #expect(engine.restStartedAt == restBefore)
+        #expect(engine.restStartedAt != nil)
+    }
 }
 
 /// Test double for `WorkoutStore` — records every persisted revision in order.

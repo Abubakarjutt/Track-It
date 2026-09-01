@@ -321,6 +321,35 @@ public final class WorkoutEngine {
         recomputeBest(for: exercise)
     }
 
+    /// Deletes the set at `entryIndex` / `setIndex` from the workout in progress —
+    /// the mid-workout inline delete path (spec story 42). A no-op when no workout
+    /// is open or the index is out of range. Runs the pure `removingSet` transform
+    /// (which drops the entry if it empties), then re-derives the exercise's best
+    /// estimated 1RM, clears the retry target, and re-points `activeEntryIndex` at
+    /// the entry that was active before the edit — or at the last entry if that
+    /// entry was the one removed, or `nil` if the workout now has no entries. The
+    /// rest timer is left running; the lifter may still be resting.
+    public func removeSet(at entryIndex: Int, _ setIndex: Int) {
+        guard let current = openWorkout,
+              current.entries.indices.contains(entryIndex),
+              current.entries[entryIndex].sets.indices.contains(setIndex)
+        else { return }
+        let exercise = current.entries[entryIndex].exercise
+        let activeName = activeExerciseName
+
+        mutate { $0 = $0.removingSet(at: entryIndex, setIndex) }
+
+        retryTarget = nil
+        recomputeBest(for: exercise)
+
+        if let activeName,
+           let restored = workout?.entries.firstIndex(where: { $0.exercise.name == activeName }) {
+            activeEntryIndex = restored
+        } else {
+            activeEntryIndex = workout?.entries.indices.last
+        }
+    }
+
     /// Interprets one spoken utterance (recogniser n-best in) and applies each
     /// parser result to the workout in progress.
     public func hear(_ hypotheses: [String]) {
