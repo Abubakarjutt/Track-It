@@ -53,6 +53,18 @@ struct SetFormattingTests {
         #expect(formattedSetLine(set(effort: .duration, seconds: 45), unit: .kilograms) == "45s")
         #expect(formattedSetLine(set(effort: .distance, metres: 400), unit: .kilograms) == "400 m")
     }
+
+    @Test("loadString renders a kilogram value in the chosen unit")
+    func loadStringRule() {
+        #expect(loadString(100, unit: .kilograms) == "100 kg")
+        #expect(loadString(100 * 0.45359237, unit: .pounds) == "100 lb")
+    }
+
+    @Test("displayLoad is the converted, rounded number with no unit word")
+    func displayLoadRule() {
+        #expect(displayLoad(100, unit: .kilograms) == 100)
+        #expect(displayLoad(100 * 0.45359237, unit: .pounds) == 100)
+    }
 }
 
 @Suite("HUDProjection")
