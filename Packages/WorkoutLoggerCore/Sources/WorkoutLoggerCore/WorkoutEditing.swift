@@ -31,6 +31,31 @@ extension Workout {
         return copy
     }
 
+    /// A copy with the set at `entryIndex` / `setIndex` moved to `toExercise`. It is
+    /// appended to the end of that exercise's existing entry, or to a new entry if
+    /// the workout has none. If the move empties the source entry, the entry goes
+    /// too (same rule as `removingSet`). Every field of the set is carried verbatim,
+    /// including `grouping` and `supersetRunID` — un-grouping a moved set is a
+    /// separate `replacingSet` edit. An out-of-range index, or a `toExercise` whose
+    /// name matches the source entry's, is a no-op.
+    public func movingSet(at entryIndex: Int, _ setIndex: Int, toExercise: Exercise) -> Workout {
+        guard hasSet(at: entryIndex, setIndex) else { return self }
+        guard entries[entryIndex].exercise.name != toExercise.name else { return self }
+
+        var copy = self
+        let moved = copy.entries[entryIndex].sets.remove(at: setIndex)
+        if copy.entries[entryIndex].sets.isEmpty {
+            copy.entries.remove(at: entryIndex)
+        }
+
+        if let target = copy.entries.firstIndex(where: { $0.exercise.name == toExercise.name }) {
+            copy.entries[target].sets.append(moved)
+        } else {
+            copy.entries.append(Entry(exercise: toExercise, sets: [moved]))
+        }
+        return copy
+    }
+
     /// A copy carrying `note` as the session note — pass `nil` to clear it.
     public func annotated(with note: String?) -> Workout {
         var copy = self
