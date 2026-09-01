@@ -521,4 +521,46 @@ struct WorkoutSessionModelTests {
         rig.model.removeActiveSet(0)
         #expect(rig.model.workout == nil)
     }
+
+    @Test("a bare set after returning to an earlier exercise still reads back terse")
+    func bareSetReadbackAfterReturnIsStable() async throws {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let squat = Exercise(name: "Back Squat", aliases: ["squat"])
+        let (model, _, _) = try makeMultiExerciseModel(
+            script: [
+                ["start workout"], ["bench 100 for 5"], ["squat 140 for 3"], ["bench"], ["100 for 5"],
+            ],
+            exercises: [bench, squat]
+        )
+        for _ in 0..<5 { model.pressed(); await model.released() }
+
+        // Characterization: the last utterance is a bare set on the re-announced Bench
+        // entry. It must land on Bench (activeExerciseName), and the readback is terse.
+        #expect(model.activeExerciseName == "Bench Press")
+        #expect(model.workout?.entries.map { $0.exercise.name } == ["Bench Press", "Back Squat"])
+        #expect(model.workout?.entries[0].sets.count == 2)   // the bare set went to Bench, not Squat
+        #expect(model.lastReadback == .speak("100 for 5"))
+    }
+
+    @Test("a second same-session workout celebrates a set that beats the ended workout's best")
+    func secondWorkoutCelebratesAgainstEndedWorkout() async throws {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let (model, _, haptics) = try makeMultiExerciseModel(
+            script: [
+                ["start workout"], ["bench 100 for 5"], ["end workout"],
+                ["start workout"], ["bench 120 for 5"],
+            ],
+            exercises: [bench],
+            knownBestExercises: []                 // nothing seeded at launch
+        )
+
+        for _ in 0..<5 { model.pressed(); await model.released() }
+
+        // First workout's 100×5 is e1RM 116.7 — logged, not celebrated (first ever).
+        // "end workout" re-derives the gate from history (wired to the helper's store
+        // by default), so "Bench Press" now counts as an exercise with a beatable
+        // record. The second workout's 120×5 (e1RM 140) beats it, so the
+        // personal-record haptic fires.
+        #expect(haptics.played.contains(.personalRecord))
+    }
 }

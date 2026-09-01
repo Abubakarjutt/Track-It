@@ -60,7 +60,7 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let unit: MassUnit
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
-    @ObservationIgnored private let knownBestExercises: Set<String>
+    @ObservationIgnored private var knownBestExercises: Set<String>
     @ObservationIgnored private let history: () -> [Workout]
 
     @ObservationIgnored private var announcedThisWorkout: Set<String> = []
@@ -203,6 +203,10 @@ public final class WorkoutSessionModel {
         syncFromEngine()
         updateActiveExercise(from: results)
 
+        if workoutBefore?.isEnded == false, workout?.isEnded == true {
+            knownBestExercises = Self.exercisesWithLoadedWorkingSet(in: history())
+        }
+
         let setsAfter = totalSetCount(workout)
         let loggedASet = setsAfter > setsBefore
 
@@ -243,6 +247,23 @@ public final class WorkoutSessionModel {
         return workout?.entries.contains { entry in
             entry.exercise.name == name && entry.sets.contains { $0.role == .working }
         } ?? false
+    }
+
+    /// Exercise names that have at least one completed working set with both a
+    /// load and a rep count anywhere in `history` — the exercises for which a
+    /// personal record can be beaten. Used to refresh the celebration gate when a
+    /// workout ends, so a second workout in the same app session judges records
+    /// against up-to-date history (spec story 68).
+    static func exercisesWithLoadedWorkingSet(in history: [Workout]) -> Set<String> {
+        var names: Set<String> = []
+        for workout in history {
+            for entry in workout.entries {
+                for set in entry.sets where set.role == .working {
+                    if set.loadKilograms != nil, set.reps != nil { names.insert(entry.exercise.name) }
+                }
+            }
+        }
+        return names
     }
 
     private func speakReadback(results: [ParseResult]) {
@@ -381,7 +402,7 @@ public final class WorkoutSessionModel {
     private func exerciseName(for salient: ParseResult, in results: [ParseResult]) -> String? {
         for case .announcement(let exercise) in results { return exercise.name }
         if isAnnouncement(salient), case .announcement(let exercise) = salient { return exercise.name }
-        return workout?.entries.last?.exercise.name
+        return activeExerciseName
     }
 
     private func consumeIsNewExercise(for salient: ParseResult, in results: [ParseResult]) -> Bool {
