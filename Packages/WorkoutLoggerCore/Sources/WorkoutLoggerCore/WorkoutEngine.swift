@@ -304,6 +304,23 @@ public final class WorkoutEngine {
         store.save(workout)
     }
 
+    /// Corrects the set at `entryIndex` / `setIndex` in the workout in progress —
+    /// the mid-workout inline edit path (spec story 38). A no-op when no workout is
+    /// open or the index is out of range. Runs the pure `replacingSet` transform,
+    /// then re-derives the exercise's running best estimated 1RM (a correction down
+    /// must not leave the PR bar too high) and clears the retry target, since a
+    /// re-spoken set must never silently overwrite a row the lifter just hand-edited.
+    public func editSet(at entryIndex: Int, _ setIndex: Int, with set: LoggedSet) {
+        guard let current = openWorkout,
+              current.entries.indices.contains(entryIndex),
+              current.entries[entryIndex].sets.indices.contains(setIndex)
+        else { return }
+        let exercise = current.entries[entryIndex].exercise
+        mutate { $0 = $0.replacingSet(at: entryIndex, setIndex, with: set) }
+        retryTarget = nil
+        recomputeBest(for: exercise)
+    }
+
     /// Interprets one spoken utterance (recogniser n-best in) and applies each
     /// parser result to the workout in progress.
     public func hear(_ hypotheses: [String]) {
