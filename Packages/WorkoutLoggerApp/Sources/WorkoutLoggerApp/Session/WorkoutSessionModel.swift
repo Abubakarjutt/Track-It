@@ -46,6 +46,11 @@ public final class WorkoutSessionModel {
     /// here because the engine keeps its active index private and the core is
     /// frozen. `nil` when no workout is open.
     public private(set) var activeExerciseName: String?
+    /// A one-line summary of the last completed workout for the active exercise —
+    /// its heaviest working-set load and best estimated 1RM — or `nil` when the
+    /// exercise has no prior history. Feeds the HUD "vs last time" row. Load and
+    /// estimate only: `ExerciseSession` carries no rep count.
+    public private(set) var previousWorkoutLine: String?
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -56,6 +61,7 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let knownBestExercises: Set<String>
+    @ObservationIgnored private let history: () -> [Workout]
 
     @ObservationIgnored private var announcedThisWorkout: Set<String> = []
     @ObservationIgnored private var lastTranscript = ""
@@ -71,7 +77,8 @@ public final class WorkoutSessionModel {
         capReadbackAtEarcon: Bool = false,
         now: @escaping () -> Date = Date.init,
         knownBestExercises: Set<String> = [],
-        staleRecovery: StaleWorkoutRecovery? = nil
+        staleRecovery: StaleWorkoutRecovery? = nil,
+        history: @escaping () -> [Workout] = { [] }
     ) {
         self.engine = engine
         self.transcriptSource = transcriptSource
@@ -83,6 +90,7 @@ public final class WorkoutSessionModel {
         self.now = now
         self.knownBestExercises = knownBestExercises
         self.staleRecovery = staleRecovery
+        self.history = history
         syncFromEngine()
         seedAnnouncedFromCurrentWorkout()
     }
@@ -91,6 +99,7 @@ public final class WorkoutSessionModel {
     /// treat its exercises as already announced this workout so the next readback
     /// for one is terse.
     private func seedAnnouncedFromCurrentWorkout() {
+        defer { refreshPreviousWorkoutLine() }
         guard let workout, !workout.isEnded else {
             activeExerciseName = nil
             return
@@ -268,6 +277,7 @@ public final class WorkoutSessionModel {
     /// name, or appends one); a bare set leaves it where it was; anything that
     /// clears the workout drops it.
     private func updateActiveExercise(from results: [ParseResult]) {
+        defer { refreshPreviousWorkoutLine() }
         guard let workout, !workout.isEnded else {
             activeExerciseName = nil
             return
@@ -282,6 +292,36 @@ public final class WorkoutSessionModel {
         if !stillValid {
             activeExerciseName = workout.entries.last?.exercise.name
         }
+    }
+
+    /// Recompute `previousWorkoutLine` for the current active exercise.
+    private func refreshPreviousWorkoutLine() {
+        guard let name = activeExerciseName,
+              let exercise = library.exercises.first(where: { $0.name == name }) else {
+            previousWorkoutLine = nil
+            return
+        }
+        previousWorkoutLine = Self.previousWorkoutLine(
+            for: exercise, unit: unit, history: history(), excluding: workout?.startedAt
+        )
+    }
+
+    /// The formatted "last time" summary for `exercise`, or `nil` when there is
+    /// no prior completed workout with a loaded working set for it. The workout
+    /// in progress (matched by `openStartedAt`) is filtered out — `history()`
+    /// includes it because the engine re-saves it on every set.
+    static func previousWorkoutLine(
+        for exercise: Exercise, unit: MassUnit, history: [Workout], excluding openStartedAt: Date?
+    ) -> String? {
+        let prior = history.filter { $0.isEnded && $0.startedAt != openStartedAt }
+        guard let last = exerciseProgress(for: exercise, across: prior).sessions.last else { return nil }
+        var clauses: [String] = []
+        if let top = last.topSetLoadKilograms { clauses.append("top \(loadString(top, unit: unit))") }
+        if let e1rm = last.bestEstimatedOneRepMaxKilograms {
+            clauses.append("best e1RM \(loadString(e1rm, unit: unit))")
+        }
+        guard !clauses.isEmpty else { return nil }
+        return "Last time: " + clauses.joined(separator: " · ")
     }
 
     private func syncFromEngine() {
