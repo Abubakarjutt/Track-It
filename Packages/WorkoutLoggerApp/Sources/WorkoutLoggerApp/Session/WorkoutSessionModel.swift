@@ -324,6 +324,40 @@ public final class WorkoutSessionModel {
         return "Last time: " + clauses.joined(separator: " · ")
     }
 
+    // MARK: - Mid-workout editing
+
+    /// Correct the set at `setIndex` of the active entry — the swipe-up list's
+    /// row index. Routed through the engine so the live rest target, retry
+    /// window, and personal-record bar stay consistent (spec story 38). A no-op
+    /// when no entry is active.
+    public func editActiveSet(_ setIndex: Int, to set: LoggedSet) {
+        guard let entryIndex = activeEntryIndex() else { return }
+        engine.editSet(at: entryIndex, setIndex, with: set)
+        afterEngineEdit()
+    }
+
+    /// Delete the set at `setIndex` of the active entry (spec story 42). A no-op
+    /// when no entry is active.
+    public func removeActiveSet(_ setIndex: Int) {
+        guard let entryIndex = activeEntryIndex() else { return }
+        engine.removeSet(at: entryIndex, setIndex)
+        afterEngineEdit()
+    }
+
+    /// The index of the active entry in `workout.entries` — the last entry whose
+    /// exercise name matches `activeExerciseName` (two entries can share a name;
+    /// this matches how `HUDProjection` resolves the active entry).
+    private func activeEntryIndex() -> Int? {
+        guard let name = activeExerciseName else { return nil }
+        return workout?.entries.lastIndex { $0.exercise.name == name }
+    }
+
+    private func afterEngineEdit() {
+        syncFromEngine()
+        updateActiveExercise(from: [])   // re-validate activeExerciseName against the smaller workout
+        refreshPreviousWorkoutLine()
+    }
+
     private func syncFromEngine() {
         workout = engine.workout
         personalRecords = engine.personalRecords

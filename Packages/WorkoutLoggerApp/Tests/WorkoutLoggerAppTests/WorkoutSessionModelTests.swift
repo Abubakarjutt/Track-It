@@ -53,6 +53,31 @@ struct WorkoutSessionModelTests {
         await rig.model.released()
     }
 
+    private func makeMultiExerciseModel(
+        script: [[String]],
+        exercises: [Exercise],
+        knownBestExercises: Set<String> = [],
+        history: (() -> [Workout])? = nil
+    ) throws -> (model: WorkoutSessionModel, store: SwiftDataWorkoutStore, haptics: SpyHaptics) {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let library = ExerciseLibrary(exercises)
+        let engine = WorkoutEngine(store: store, library: library)
+        let haptics = SpyHaptics()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: ScriptedTranscriptSource(script),
+            readbackVoice: SpyReadbackVoice(), haptics: haptics, library: library,
+            knownBestExercises: knownBestExercises,
+            // Default: history reads this helper's own store, so a scripted
+            // "end workout" is visible to the celebration-gate re-derive.
+            history: history ?? { store.history() }
+        )
+        return (model, store, haptics)
+    }
+
     @Test("a start-workout utterance opens a workout")
     func startsWorkout() async throws {
         let rig = try makeRig(script: [["start workout"]])
@@ -454,5 +479,46 @@ struct WorkoutSessionModelTests {
         for _ in 0..<3 { model.pressed(); await model.released() }
 
         #expect(model.previousWorkoutLine == nil)  // the only stored workout is the open one
+    }
+
+    @Test("editActiveSet routes a corrected set through the engine and updates the projection")
+    func editActiveSetUpdatesLiveWorkout() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"]])
+        await say(rig); await say(rig)
+
+        rig.model.editActiveSet(0, to: LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 105, reps: 5, loggedAt: Date(timeIntervalSince1970: 0)
+        ))
+
+        #expect(rig.model.workout?.entries[0].sets[0].loadKilograms == 105)
+    }
+
+    @Test("removeActiveSet deletes the row and, when it empties the entry, moves the active exercise")
+    func removeActiveSetEmptiesEntry() async throws {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let squat = Exercise(name: "Back Squat", aliases: ["squat"])
+        let (model, _, _) = try makeMultiExerciseModel(
+            script: [["start workout"], ["bench 100 for 5"], ["squat 140 for 5"], ["bench"]],
+            exercises: [bench, squat]
+        )
+        for _ in 0..<4 { model.pressed(); await model.released() }
+        // Active exercise is Bench again, its entry has exactly one set.
+
+        model.removeActiveSet(0)
+
+        #expect(model.workout?.entries.map { $0.exercise.name } == ["Back Squat"])
+        #expect(model.activeExerciseName == "Back Squat")
+    }
+
+    @Test("the edit wrappers are a no-op when no workout is open")
+    func editWrappersNoOpWithoutWorkout() throws {
+        let rig = try makeRig(script: [])
+        rig.model.editActiveSet(0, to: LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 1, reps: 1, loggedAt: Date(timeIntervalSince1970: 0)
+        ))
+        rig.model.removeActiveSet(0)
+        #expect(rig.model.workout == nil)
     }
 }
