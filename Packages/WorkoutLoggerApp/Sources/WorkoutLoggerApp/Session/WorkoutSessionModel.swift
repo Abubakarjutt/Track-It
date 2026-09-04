@@ -51,6 +51,11 @@ public final class WorkoutSessionModel {
     /// exercise has no prior history. Feeds the HUD "vs last time" row. Load and
     /// estimate only: `ExerciseSession` carries no rep count.
     public private(set) var previousWorkoutLine: String?
+    /// True right after a tap-select shortlist was dismissed without a pick —
+    /// the spoken set was real but is now gone, and on an eyes-free app a
+    /// silent drop is indistinguishable from a successful log. Cleared by the
+    /// next `pressed()`, so it only lives until the user acts again.
+    public private(set) var notLoggedNotice = false
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -140,6 +145,7 @@ public final class WorkoutSessionModel {
     public func pressed() {
         transcriptSource.beginUtterance()
         isListening = true
+        notLoggedNotice = false
     }
 
     public func released() async {
@@ -168,6 +174,7 @@ public final class WorkoutSessionModel {
     /// utterance is dropped and the workout is left exactly as it was.
     public func dismissTapSelect() {
         tapSelectCandidates = nil
+        notLoggedNotice = true
     }
 
     public func tick() {

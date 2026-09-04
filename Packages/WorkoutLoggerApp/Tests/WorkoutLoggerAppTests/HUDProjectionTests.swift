@@ -207,4 +207,15 @@ struct HUDProjectionTests {
     func freshModelNoVsLastTime() throws {
         #expect(HUDProjection(from: try makeRig(script: []).model).vsLastTimeLine == nil)
     }
+
+    @Test("notLoggedNotice passes through the model's dismissed-tap-select flag")
+    func notLoggedNoticePassThrough() async throws {
+        let rig = try makeRig(script: [["start workout"], ["flurbo"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates != nil)
+        #expect(HUDProjection(from: rig.model).notLoggedNotice == false)
+
+        rig.model.dismissTapSelect()
+        #expect(HUDProjection(from: rig.model).notLoggedNotice == true)
+    }
 }

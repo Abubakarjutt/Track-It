@@ -118,7 +118,7 @@ Small, disciplined palette: mostly black/white/gray, with color reserved for one
 ### Neutral
 - **System Secondary** (dynamic, `Color.secondary` / `.foregroundStyle(.secondary)`): Supporting text throughout — the "vs last time" line, history row subtitles, empty-state descriptions. Left as the system semantic token, not a fixed hex, so it tracks the platform.
 - **PR Yellow** (`#FFD60A`, system `Color.yellow`): The personal-record trophy badge (`trophy.fill`) in workout detail — the app's one deliberately celebratory mark.
-- **Error Red** (`#FF453A`, system `Color.red`): Save-error text in the workout detail list. Used only for that.
+- **Error Red** (`#FF453A`, system `Color.red`): Reserved for things that went wrong and need the lifter's attention — save-error text in the workout detail list, and the live HUD's "Not logged" notice when a spoken set is dismissed unresolved. Not used for anything else.
 
 ### Named Rules
 **The One Meaning Rule.** Green means exactly one thing — "go / on-target" (listening, rest target reached). It is never used decoratively and never means anything else.

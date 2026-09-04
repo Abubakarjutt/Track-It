@@ -67,7 +67,11 @@ struct HUDView: View {
 
             restCard
 
-            if let vs = hud.vsLastTimeLine {
+            if hud.notLoggedNotice {
+                Text("Not logged — say the set again")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            } else if let vs = hud.vsLastTimeLine {
                 Text(vs)
                     .font(.footnote)
                     .foregroundStyle(.secondary)

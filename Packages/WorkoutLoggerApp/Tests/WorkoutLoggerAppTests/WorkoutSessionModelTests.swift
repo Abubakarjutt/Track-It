@@ -242,6 +242,31 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.workout == before)
     }
 
+    @Test("dismissTapSelect surfaces a not-logged notice; the next press clears it")
+    func dismissTapSelectSurfacesNotice() async throws {
+        let rig = try makeRig(script: [["start workout"], ["flurbo"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates != nil)
+        #expect(rig.model.notLoggedNotice == false)
+
+        rig.model.dismissTapSelect()
+        #expect(rig.model.notLoggedNotice == true)
+
+        rig.model.pressed()
+        #expect(rig.model.notLoggedNotice == false)
+    }
+
+    @Test("resolveTapSelect (picking a candidate) never raises the not-logged notice")
+    func resolveTapSelectLeavesNoticeClear() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench bruss 100 for 5"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates?.isEmpty == false)
+
+        rig.model.resolveTapSelect(Self.bench)
+
+        #expect(rig.model.notLoggedNotice == false)
+    }
+
     @Test("tick fires restReached once after the rest target passes, then not again")
     func restReachedOnce() async throws {
         var clock = Date(timeIntervalSince1970: 1_000)

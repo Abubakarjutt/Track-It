@@ -13,6 +13,7 @@ public struct HUDProjection: Equatable, Sendable {
     public var currentEntrySetLines: [String]
     public var tapSelectCandidates: [Exercise]?
     public var vsLastTimeLine: String?
+    public var notLoggedNotice: Bool
 
     public init(
         exerciseName: String,
@@ -22,7 +23,8 @@ public struct HUDProjection: Equatable, Sendable {
         isListening: Bool,
         currentEntrySetLines: [String],
         tapSelectCandidates: [Exercise]?,
-        vsLastTimeLine: String? = nil
+        vsLastTimeLine: String? = nil,
+        notLoggedNotice: Bool = false
     ) {
         self.exerciseName = exerciseName
         self.lastSetLine = lastSetLine
@@ -32,6 +34,7 @@ public struct HUDProjection: Equatable, Sendable {
         self.currentEntrySetLines = currentEntrySetLines
         self.tapSelectCandidates = tapSelectCandidates
         self.vsLastTimeLine = vsLastTimeLine
+        self.notLoggedNotice = notLoggedNotice
     }
 
     @MainActor
@@ -53,6 +56,7 @@ public struct HUDProjection: Equatable, Sendable {
         currentEntrySetLines = (entry?.sets ?? []).map { formattedSetLine($0, unit: unit) }
         tapSelectCandidates = model.tapSelectCandidates
         vsLastTimeLine = model.previousWorkoutLine
+        notLoggedNotice = model.notLoggedNotice
     }
 
     /// `m:ss` count-up. Negative / sub-second clamps to `0:00`.
