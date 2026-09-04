@@ -52,7 +52,7 @@ public struct ExerciseProgressProjection: Equatable, Sendable {
         }
         if let last = sessions.last, let top = last.topSetLoadKilograms {
             if let e1rm = last.bestEstimatedOneRepMaxKilograms {
-                topSetText = "\(loadString(top, unit: unit)) · e1RM \(loadString(e1rm, unit: unit))"
+                topSetText = "\(loadString(top, unit: unit)) · est. 1RM \(loadString(e1rm, unit: unit))"
             } else {
                 topSetText = loadString(top, unit: unit)
             }

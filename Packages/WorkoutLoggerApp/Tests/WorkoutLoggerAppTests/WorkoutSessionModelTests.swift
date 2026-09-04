@@ -447,7 +447,7 @@ struct WorkoutSessionModelTests {
         await say(rig)   // bench 90 for 5 — active exercise becomes Bench
 
         // e1RM(100,5) = 100 * 35 / 30 = 116.666… -> gymRound 116.7
-        #expect(rig.model.previousWorkoutLine == "Last time: top 100 kg · best e1RM 116.7 kg")
+        #expect(rig.model.previousWorkoutLine == "Last time: top 100 kg · best est. 1RM 116.7 kg")
     }
 
     @Test("previousWorkoutLine is nil for an exercise with no prior history")

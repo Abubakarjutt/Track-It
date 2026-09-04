@@ -55,6 +55,7 @@ struct ExerciseProgressView: View {
     private func signed(_ value: Double) -> String {
         (value >= 0 ? "+" : "") + numberFormatted(value)
     }
+    // Local: WorkoutLoggerApp's numberString is module-internal, not visible here.
     private func numberFormatted(_ value: Double) -> String {
         value == value.rounded() ? String(Int(value)) : String(value)
     }

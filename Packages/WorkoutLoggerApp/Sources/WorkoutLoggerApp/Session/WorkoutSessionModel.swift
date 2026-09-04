@@ -339,7 +339,7 @@ public final class WorkoutSessionModel {
         var clauses: [String] = []
         if let top = last.topSetLoadKilograms { clauses.append("top \(loadString(top, unit: unit))") }
         if let e1rm = last.bestEstimatedOneRepMaxKilograms {
-            clauses.append("best e1RM \(loadString(e1rm, unit: unit))")
+            clauses.append("best est. 1RM \(loadString(e1rm, unit: unit))")
         }
         guard !clauses.isEmpty else { return nil }
         return "Last time: " + clauses.joined(separator: " · ")
@@ -375,8 +375,9 @@ public final class WorkoutSessionModel {
 
     private func afterEngineEdit() {
         syncFromEngine()
-        updateActiveExercise(from: [])   // re-validate activeExerciseName against the smaller workout
-        refreshPreviousWorkoutLine()
+        // re-validate activeExerciseName against the smaller workout; its
+        // `defer` refreshes previousWorkoutLine, so no explicit call here.
+        updateActiveExercise(from: [])
     }
 
     private func syncFromEngine() {

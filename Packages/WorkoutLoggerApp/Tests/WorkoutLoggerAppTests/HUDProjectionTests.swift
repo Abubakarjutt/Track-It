@@ -200,7 +200,7 @@ struct HUDProjectionTests {
         model.pressed(); await model.released()
         model.pressed(); await model.released()
 
-        #expect(HUDProjection(from: model).vsLastTimeLine == "Last time: top 100 kg · best e1RM 116.7 kg")
+        #expect(HUDProjection(from: model).vsLastTimeLine == "Last time: top 100 kg · best est. 1RM 116.7 kg")
     }
 
     @Test("a fresh model has no vsLastTimeLine")

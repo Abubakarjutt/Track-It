@@ -20,6 +20,8 @@ struct WorkoutDetailView: View {
     /// before the first `open`).
     private var current: Workout { historyModel.selected ?? workout }
 
+    @State private var noteText: String = ""
+
     var body: some View {
         List {
             if let error = historyModel.saveError {
@@ -68,9 +70,17 @@ struct WorkoutDetailView: View {
                 Text("Volume: \(summary.totalVolumeText)")
                 Text("Working reps: \(summary.totalWorkingReps)")
                 Text("Duration: \(summary.durationText)")
-                if let note = summary.note { Text(note).italic() }
+            }
+            Section("Note") {
+                TextField("Add a note for this workout", text: $noteText, axis: .vertical)
+                if noteText != (current.note ?? "") {
+                    Button("Save note") {
+                        historyModel.applyEdit { $0.annotated(with: noteText.isEmpty ? nil : noteText) }
+                    }
+                }
             }
         }
         .navigationTitle(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
+        .onAppear { noteText = current.note ?? "" }
     }
 }

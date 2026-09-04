@@ -26,7 +26,7 @@ struct ExerciseProgressProjectionTests {
         // every plotted value passes through displayLoad -> gymRound (1 decimal)
         #expect(p.estimatedOneRepMaxSeries.map(\.value) == [116.7, 128.3])
         // topSetLoad 110 -> "110 kg"; e1RM 128.33 -> "128.3 kg"
-        #expect(p.topSetText == "110 kg · e1RM 128.3 kg")
+        #expect(p.topSetText == "110 kg · est. 1RM 128.3 kg")
     }
 
     @Test("the comparison is the last two sessions' deltas")
@@ -84,6 +84,6 @@ struct ExerciseProgressProjectionTests {
         let p = ExerciseProgressProjection(progress: progress, unit: .pounds)
         #expect(p.loadSeries.map(\.value) == [100])
         #expect(p.volumeSeries.map(\.value) == [100])
-        #expect(p.topSetText == "100 lb · e1RM 100 lb")
+        #expect(p.topSetText == "100 lb · est. 1RM 100 lb")
     }
 }
