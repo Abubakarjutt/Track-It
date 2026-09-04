@@ -56,6 +56,11 @@ public final class WorkoutSessionModel {
     /// silent drop is indistinguishable from a successful log. Cleared by the
     /// next `pressed()`, so it only lives until the user acts again.
     public private(set) var notLoggedNotice = false
+    /// True across the async gap between releasing the talk button and the
+    /// transcript resolving — recognition finalizing, parse running, engine
+    /// applying. The lifter's finger is already off the button here, so
+    /// without this the HUD would silently sit idle mid-work.
+    public private(set) var isProcessing = false
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -150,6 +155,8 @@ public final class WorkoutSessionModel {
 
     public func released() async {
         isListening = false
+        isProcessing = true
+        defer { isProcessing = false }
         let hypotheses: [String]
         do {
             hypotheses = try await transcriptSource.endUtterance()

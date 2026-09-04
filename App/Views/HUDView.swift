@@ -17,6 +17,9 @@ struct HUDView: View {
 
     @State private var showingSetList = false
     @State private var editingRow: EditRow?
+    /// Drives the talk button's processing pulse — see `talkButton`.
+    @State private var isPulsingDim = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Identifiable wrapper so `.sheet(item:)` can carry the tapped row index.
     private struct EditRow: Identifiable { let id: Int }
@@ -143,21 +146,47 @@ struct HUDView: View {
         }
     }
 
+    private var talkButtonLabel: String {
+        if hud.isListening { return "Listening…" }
+        if hud.isProcessing { return "Working…" }
+        return "Hold to talk"
+    }
+
     private var talkButton: some View {
-        Text(hud.isListening ? "Listening…" : "Hold to talk")
+        Text(talkButtonLabel)
             .font(.title3.weight(.semibold))
             .foregroundStyle(.black)
+            .contentTransition(.opacity)
             .frame(maxWidth: .infinity)
             .frame(height: 96)
             .background(
                 RoundedRectangle(cornerRadius: 24)
                     .fill(hud.isListening ? Color.green : Color.white)
+                    // A slow breathing dim while the finalized transcript is
+                    // still being recognized/parsed — the finger is already
+                    // off the button here, so idle-white alone would read as
+                    // "done" a beat before it actually is. Never colored: a
+                    // second accent would break the One Meaning Rule.
+                    .opacity(hud.isProcessing && isPulsingDim ? 0.55 : 1)
             )
+            .animation(.easeOut(duration: 0.15), value: talkButtonLabel)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in if !model.isListening { model.pressed() } }
                     .onEnded { _ in Task { await model.released() } }
             )
+            .onChange(of: hud.isProcessing) { _, isProcessing in
+                guard !reduceMotion else { return }
+                if isProcessing {
+                    withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+                        isPulsingDim = true
+                    }
+                } else {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        isPulsingDim = false
+                    }
+                }
+            }
             // Exposing this as a real accessibility button/element lets
             // VoiceOver's double-tap-and-hold gesture drive the DragGesture
             // above directly (it synthesizes a real touch-down/up at the
@@ -165,8 +194,8 @@ struct HUDView: View {
             // select the control, let alone hold it.
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(hud.isListening ? "Listening" : "Hold to talk")
-            .accessibilityHint(hud.isListening ? "" : "Double-tap and hold to speak a set")
+            .accessibilityLabel(hud.isListening ? "Listening" : (hud.isProcessing ? "Working" : "Hold to talk"))
+            .accessibilityHint(hud.isListening || hud.isProcessing ? "" : "Double-tap and hold to speak a set")
     }
 }
 

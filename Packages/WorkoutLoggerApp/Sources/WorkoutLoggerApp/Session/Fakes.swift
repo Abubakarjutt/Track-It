@@ -26,6 +26,30 @@ public final class ScriptedTranscriptSource: TranscriptSource {
     }
 }
 
+/// A `TranscriptSource` whose `endUtterance()` suspends until the test
+/// explicitly `resume(with:)`s it — for asserting on state that only holds
+/// during the real async gap between releasing the talk button and the
+/// transcript resolving, which `ScriptedTranscriptSource` resolves through
+/// too fast to observe.
+public final class GatedTranscriptSource: TranscriptSource {
+    private var continuation: CheckedContinuation<[String], Error>?
+    public private(set) var beganCount = 0
+    public init() {}
+
+    public func beginUtterance() {
+        beganCount += 1
+    }
+
+    public func endUtterance() async throws -> [String] {
+        try await withCheckedThrowingContinuation { self.continuation = $0 }
+    }
+
+    public func resume(with hypotheses: [String]) {
+        continuation?.resume(returning: hypotheses)
+        continuation = nil
+    }
+}
+
 /// Records every readback plan it is handed.
 public final class SpyReadbackVoice: ReadbackVoice {
     public private(set) var performed: [ReadbackPlan] = []

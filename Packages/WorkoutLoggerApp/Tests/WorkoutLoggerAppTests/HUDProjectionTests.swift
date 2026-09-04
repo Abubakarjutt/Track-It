@@ -208,6 +208,29 @@ struct HUDProjectionTests {
         #expect(HUDProjection(from: try makeRig(script: []).model).vsLastTimeLine == nil)
     }
 
+    @Test("isProcessing passes through the model's async-gap flag")
+    func isProcessingPassThrough() async throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let gate = GatedTranscriptSource()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: gate, readbackVoice: SpyReadbackVoice(),
+            haptics: SpyHaptics(), library: Self.library
+        )
+
+        #expect(HUDProjection(from: model).isProcessing == false)
+        model.pressed()
+        let releaseTask = Task { await model.released() }
+        for _ in 0..<10 where !model.isProcessing { await Task.yield() }
+        #expect(HUDProjection(from: model).isProcessing == true)
+
+        gate.resume(with: [])
+        await releaseTask.value
+        #expect(HUDProjection(from: model).isProcessing == false)
+    }
+
     @Test("notLoggedNotice passes through the model's dismissed-tap-select flag")
     func notLoggedNoticePassThrough() async throws {
         let rig = try makeRig(script: [["start workout"], ["flurbo"]])

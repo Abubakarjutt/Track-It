@@ -267,6 +267,32 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.notLoggedNotice == false)
     }
 
+    @Test("isProcessing is true only across the gap between released() and the transcript resolving")
+    func isProcessingTracksTheAsyncGap() async throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let gate = GatedTranscriptSource()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: gate, readbackVoice: SpyReadbackVoice(),
+            haptics: SpyHaptics(), library: Self.library
+        )
+
+        model.pressed()
+        #expect(model.isProcessing == false)
+
+        let releaseTask = Task { await model.released() }
+        for _ in 0..<10 where !model.isProcessing { await Task.yield() }
+        #expect(model.isProcessing == true)
+
+        gate.resume(with: [])
+        await releaseTask.value
+        #expect(model.isProcessing == false)
+    }
+
     @Test("tick fires restReached once after the rest target passes, then not again")
     func restReachedOnce() async throws {
         var clock = Date(timeIntervalSince1970: 1_000)
