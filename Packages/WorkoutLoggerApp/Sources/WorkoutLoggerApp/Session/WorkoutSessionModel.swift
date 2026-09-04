@@ -46,6 +46,11 @@ public final class WorkoutSessionModel {
     /// here because the engine keeps its active index private and the core is
     /// frozen. `nil` when no workout is open.
     public private(set) var activeExerciseName: String?
+    /// A one-line summary of the last completed workout for the active exercise —
+    /// its heaviest working-set load and best estimated 1RM — or `nil` when the
+    /// exercise has no prior history. Feeds the HUD "vs last time" row. Load and
+    /// estimate only: `ExerciseSession` carries no rep count.
+    public private(set) var previousWorkoutLine: String?
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -55,7 +60,8 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let unit: MassUnit
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
-    @ObservationIgnored private let knownBestExercises: Set<String>
+    @ObservationIgnored private var knownBestExercises: Set<String>
+    @ObservationIgnored private let history: () -> [Workout]
 
     @ObservationIgnored private var announcedThisWorkout: Set<String> = []
     @ObservationIgnored private var lastTranscript = ""
@@ -71,7 +77,8 @@ public final class WorkoutSessionModel {
         capReadbackAtEarcon: Bool = false,
         now: @escaping () -> Date = Date.init,
         knownBestExercises: Set<String> = [],
-        staleRecovery: StaleWorkoutRecovery? = nil
+        staleRecovery: StaleWorkoutRecovery? = nil,
+        history: @escaping () -> [Workout] = { [] }
     ) {
         self.engine = engine
         self.transcriptSource = transcriptSource
@@ -83,6 +90,7 @@ public final class WorkoutSessionModel {
         self.now = now
         self.knownBestExercises = knownBestExercises
         self.staleRecovery = staleRecovery
+        self.history = history
         syncFromEngine()
         seedAnnouncedFromCurrentWorkout()
     }
@@ -91,6 +99,7 @@ public final class WorkoutSessionModel {
     /// treat its exercises as already announced this workout so the next readback
     /// for one is terse.
     private func seedAnnouncedFromCurrentWorkout() {
+        defer { refreshPreviousWorkoutLine() }
         guard let workout, !workout.isEnded else {
             activeExerciseName = nil
             return
@@ -194,6 +203,10 @@ public final class WorkoutSessionModel {
         syncFromEngine()
         updateActiveExercise(from: results)
 
+        if workoutBefore?.isEnded == false, workout?.isEnded == true {
+            knownBestExercises = Self.exercisesWithLoadedWorkingSet(in: history())
+        }
+
         let setsAfter = totalSetCount(workout)
         let loggedASet = setsAfter > setsBefore
 
@@ -236,6 +249,23 @@ public final class WorkoutSessionModel {
         } ?? false
     }
 
+    /// Exercise names that have at least one completed working set with both a
+    /// load and a rep count anywhere in `history` — the exercises for which a
+    /// personal record can be beaten. Used to refresh the celebration gate when a
+    /// workout ends, so a second workout in the same app session judges records
+    /// against up-to-date history (spec story 68).
+    static func exercisesWithLoadedWorkingSet(in history: [Workout]) -> Set<String> {
+        var names: Set<String> = []
+        for workout in history {
+            for entry in workout.entries {
+                for set in entry.sets where set.role == .working {
+                    if set.loadKilograms != nil, set.reps != nil { names.insert(entry.exercise.name) }
+                }
+            }
+        }
+        return names
+    }
+
     private func speakReadback(results: [ParseResult]) {
         guard let salient = salientResult(results) else { return }
         let name = exerciseName(for: salient, in: results)
@@ -268,6 +298,7 @@ public final class WorkoutSessionModel {
     /// name, or appends one); a bare set leaves it where it was; anything that
     /// clears the workout drops it.
     private func updateActiveExercise(from results: [ParseResult]) {
+        defer { refreshPreviousWorkoutLine() }
         guard let workout, !workout.isEnded else {
             activeExerciseName = nil
             return
@@ -282,6 +313,71 @@ public final class WorkoutSessionModel {
         if !stillValid {
             activeExerciseName = workout.entries.last?.exercise.name
         }
+    }
+
+    /// Recompute `previousWorkoutLine` for the current active exercise.
+    private func refreshPreviousWorkoutLine() {
+        guard let name = activeExerciseName,
+              let exercise = library.exercises.first(where: { $0.name == name }) else {
+            previousWorkoutLine = nil
+            return
+        }
+        previousWorkoutLine = Self.previousWorkoutLine(
+            for: exercise, unit: unit, history: history(), excluding: workout?.startedAt
+        )
+    }
+
+    /// The formatted "last time" summary for `exercise`, or `nil` when there is
+    /// no prior completed workout with a loaded working set for it. The workout
+    /// in progress (matched by `openStartedAt`) is filtered out — `history()`
+    /// includes it because the engine re-saves it on every set.
+    static func previousWorkoutLine(
+        for exercise: Exercise, unit: MassUnit, history: [Workout], excluding openStartedAt: Date?
+    ) -> String? {
+        let prior = history.filter { $0.isEnded && $0.startedAt != openStartedAt }
+        guard let last = exerciseProgress(for: exercise, across: prior).sessions.last else { return nil }
+        var clauses: [String] = []
+        if let top = last.topSetLoadKilograms { clauses.append("top \(loadString(top, unit: unit))") }
+        if let e1rm = last.bestEstimatedOneRepMaxKilograms {
+            clauses.append("best est. 1RM \(loadString(e1rm, unit: unit))")
+        }
+        guard !clauses.isEmpty else { return nil }
+        return "Last time: " + clauses.joined(separator: " · ")
+    }
+
+    // MARK: - Mid-workout editing
+
+    /// Correct the set at `setIndex` of the active entry — the swipe-up list's
+    /// row index. Routed through the engine so the live rest target, retry
+    /// window, and personal-record bar stay consistent (spec story 38). A no-op
+    /// when no entry is active.
+    public func editActiveSet(_ setIndex: Int, to set: LoggedSet) {
+        guard let entryIndex = activeEntryIndex() else { return }
+        engine.editSet(at: entryIndex, setIndex, with: set)
+        afterEngineEdit()
+    }
+
+    /// Delete the set at `setIndex` of the active entry (spec story 42). A no-op
+    /// when no entry is active.
+    public func removeActiveSet(_ setIndex: Int) {
+        guard let entryIndex = activeEntryIndex() else { return }
+        engine.removeSet(at: entryIndex, setIndex)
+        afterEngineEdit()
+    }
+
+    /// The index of the active entry in `workout.entries` — the last entry whose
+    /// exercise name matches `activeExerciseName` (two entries can share a name;
+    /// this matches how `HUDProjection` resolves the active entry).
+    private func activeEntryIndex() -> Int? {
+        guard let name = activeExerciseName else { return nil }
+        return workout?.entries.lastIndex { $0.exercise.name == name }
+    }
+
+    private func afterEngineEdit() {
+        syncFromEngine()
+        // re-validate activeExerciseName against the smaller workout; its
+        // `defer` refreshes previousWorkoutLine, so no explicit call here.
+        updateActiveExercise(from: [])
     }
 
     private func syncFromEngine() {
@@ -307,7 +403,7 @@ public final class WorkoutSessionModel {
     private func exerciseName(for salient: ParseResult, in results: [ParseResult]) -> String? {
         for case .announcement(let exercise) in results { return exercise.name }
         if isAnnouncement(salient), case .announcement(let exercise) = salient { return exercise.name }
-        return workout?.entries.last?.exercise.name
+        return activeExerciseName
     }
 
     private func consumeIsNewExercise(for salient: ParseResult, in results: [ParseResult]) -> Bool {

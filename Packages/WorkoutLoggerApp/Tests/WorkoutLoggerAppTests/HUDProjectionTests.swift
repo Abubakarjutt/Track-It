@@ -53,6 +53,18 @@ struct SetFormattingTests {
         #expect(formattedSetLine(set(effort: .duration, seconds: 45), unit: .kilograms) == "45s")
         #expect(formattedSetLine(set(effort: .distance, metres: 400), unit: .kilograms) == "400 m")
     }
+
+    @Test("loadString renders a kilogram value in the chosen unit")
+    func loadStringRule() {
+        #expect(loadString(100, unit: .kilograms) == "100 kg")
+        #expect(loadString(100 * 0.45359237, unit: .pounds) == "100 lb")
+    }
+
+    @Test("displayLoad is the converted, rounded number with no unit word")
+    func displayLoadRule() {
+        #expect(displayLoad(100, unit: .kilograms) == 100)
+        #expect(displayLoad(100 * 0.45359237, unit: .pounds) == 100)
+    }
 }
 
 @Suite("HUDProjection")
@@ -121,7 +133,7 @@ struct HUDProjectionTests {
         clock = Date(timeIntervalSince1970: 1_065) // 1:05
         rig.model.tick()
         var p = HUDProjection(from: rig.model)
-        #expect(p.restLine == "1:05")
+        #expect(p.restLine == "1:05 / 2:00")       // elapsed / default 120s target
         #expect(p.restTargetReached == false)
 
         clock = Date(timeIntervalSince1970: 1_130) // past the 120s default
@@ -165,5 +177,34 @@ struct HUDProjectionTests {
         let rig = try makeRig(script: [["start workout"], ["flurbo"]])
         await say(rig); await say(rig)
         #expect(HUDProjection(from: rig.model).tapSelectCandidates != nil)
+    }
+
+    @Test("vsLastTimeLine passes through the model's previous-workout summary")
+    func vsLastTimeLinePassThrough() async throws {
+        let priorBench = Workout(
+            entries: [Entry(exercise: Self.bench, sets: [
+                LoggedSet(loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                          loadKilograms: 100, reps: 5, loggedAt: Date(timeIntervalSince1970: 10)),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 10), endedAt: Date(timeIntervalSince1970: 70)
+        )
+        let container = try ModelContainer(
+            for: WorkoutRecord.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: ScriptedTranscriptSource([["start workout"], ["bench 90 for 5"]]),
+            readbackVoice: SpyReadbackVoice(), haptics: SpyHaptics(), library: Self.library,
+            history: { [priorBench] }
+        )
+        model.pressed(); await model.released()
+        model.pressed(); await model.released()
+
+        #expect(HUDProjection(from: model).vsLastTimeLine == "Last time: top 100 kg · best est. 1RM 116.7 kg")
+    }
+
+    @Test("a fresh model has no vsLastTimeLine")
+    func freshModelNoVsLastTime() throws {
+        #expect(HUDProjection(from: try makeRig(script: []).model).vsLastTimeLine == nil)
     }
 }

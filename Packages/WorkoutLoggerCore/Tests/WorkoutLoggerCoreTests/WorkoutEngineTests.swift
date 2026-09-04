@@ -644,6 +644,154 @@ struct WorkoutEngineTests {
         #expect(engine.workout == nil)
         #expect(store.saved.isEmpty)
     }
+
+    @Test("editSet replaces a set in the live workout, persists it, and re-derives the PR bar")
+    func editSetLowersPersonalRecordBar() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["120 for 5"])          // e1RM 140 — a personal record, bar now 140
+        #expect(engine.personalRecords.count == 1)
+
+        engine.editSet(at: 0, 0, with: LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 60, reps: 5, loggedAt: Date(timeIntervalSince1970: 0)
+        ))                                   // e1RM now 70 — bar drops
+
+        #expect(engine.workout?.entries[0].sets[0].loadKilograms == 60)
+        #expect(store.saved.last?.entries[0].sets[0].loadKilograms == 60)
+
+        engine.hear(["100 for 5"])           // e1RM 116.67 — above 70, below the stale 140
+        #expect(engine.personalRecords.count == 2) // caught, because the bar was re-derived
+    }
+
+    @Test("editSet clears the retry target so a re-spoken set does not overwrite the edited row")
+    func editSetClearsRetryTarget() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"])          // this set becomes the retry target
+
+        engine.editSet(at: 0, 0, with: LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 105, reps: 5, loggedAt: Date(timeIntervalSince1970: 0)
+        ))
+        engine.hear(["100 for 5"])          // would be a retry-overwrite if the target still stood
+
+        #expect(engine.workout?.entries[0].sets.count == 2) // appended, not overwritten
+        #expect(engine.workout?.entries[0].sets.map(\.loadKilograms) == [105, 100])
+    }
+
+    @Test("editSet is a no-op with no open workout or an out-of-range index")
+    func editSetGuards() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        let dummy = LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 1, reps: 1, loggedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        engine.editSet(at: 0, 0, with: dummy)          // no workout yet
+        #expect(store.saved.isEmpty)
+
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"])
+        let savesBefore = store.saved.count
+        engine.editSet(at: 0, 9, with: dummy)          // set index out of range
+        engine.editSet(at: 5, 0, with: dummy)          // entry index out of range
+        #expect(store.saved.count == savesBefore)      // nothing persisted
+    }
+
+    @Test("removeSet drops an emptied earlier entry and keeps the active pointer on the current exercise")
+    func removeSetRepairsActiveEntryAfterEmptyingEarlierEntry() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let squat = Exercise(name: "Squat", aliases: ["squat"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench, squat]))
+        engine.startWorkout()
+        engine.hear(["bench"]); engine.hear(["100 for 5"])   // entry 0, one set
+        engine.hear(["squat"]); engine.hear(["140 for 5"])   // entry 1, active
+        engine.hear(["bench"])                               // active moves back to entry 0
+
+        engine.removeSet(at: 0, 0)                           // empties + drops entry 0; squat shifts to index 0
+
+        #expect(engine.workout?.entries.map(\.exercise) == [squat])
+        engine.hear(["150 for 3"])                           // next set must land on squat
+        #expect(engine.workout?.entries[0].sets.map(\.loadKilograms) == [140, 150])
+    }
+
+    @Test("removeSet keeps a set it did not touch and persists the smaller workout")
+    func removeSetDropsOnlyTheChosenSet() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"]); engine.hear(["110 for 3"]); engine.hear(["105 for 4"])
+
+        engine.removeSet(at: 0, 1)
+
+        #expect(engine.workout?.entries[0].sets.map(\.loadKilograms) == [100, 105])
+        #expect(store.saved.last?.entries[0].sets.count == 2)
+    }
+
+    @Test("removeSet re-derives the PR bar so a later set beating the remaining best is caught")
+    func removeSetReDerivesPersonalRecordBar() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"])   // e1RM 116.67 — PR, bar 116.67
+        engine.hear(["120 for 5"])   // e1RM 140    — PR, bar 140
+        #expect(engine.personalRecords.count == 2)
+
+        engine.removeSet(at: 0, 1)   // drop the 120x5; bar re-derives down to 116.67
+
+        engine.hear(["110 for 5"])   // e1RM 128.33 — above 116.67
+        #expect(engine.personalRecords.count == 3)
+    }
+
+    @Test("removeSet is a no-op with no open workout or an out-of-range index")
+    func removeSetGuards() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+
+        engine.removeSet(at: 0, 0)
+        #expect(store.saved.isEmpty)
+
+        engine.startWorkout()
+        engine.hear(["bench"]); engine.hear(["100 for 5"])
+        let savesBefore = store.saved.count
+        engine.removeSet(at: 0, 9)
+        engine.removeSet(at: 3, 0)
+        #expect(store.saved.count == savesBefore)
+    }
+
+    @Test("removeSet leaves the rest timer running")
+    func removeSetLeavesRestRunning() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]), now: { clock })
+        engine.startWorkout()
+        engine.hear(["bench"])
+        clock = Date(timeIntervalSince1970: 1_050)
+        engine.hear(["100 for 5"]); engine.hear(["110 for 3"])
+        let restBefore = engine.restStartedAt
+
+        engine.removeSet(at: 0, 0)
+
+        #expect(engine.restStartedAt == restBefore)
+        #expect(engine.restStartedAt != nil)
+    }
 }
 
 /// Test double for `WorkoutStore` — records every persisted revision in order.

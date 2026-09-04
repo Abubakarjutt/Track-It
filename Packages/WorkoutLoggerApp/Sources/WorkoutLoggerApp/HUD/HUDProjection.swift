@@ -12,6 +12,7 @@ public struct HUDProjection: Equatable, Sendable {
     public var isListening: Bool
     public var currentEntrySetLines: [String]
     public var tapSelectCandidates: [Exercise]?
+    public var vsLastTimeLine: String?
 
     public init(
         exerciseName: String,
@@ -20,7 +21,8 @@ public struct HUDProjection: Equatable, Sendable {
         restTargetReached: Bool,
         isListening: Bool,
         currentEntrySetLines: [String],
-        tapSelectCandidates: [Exercise]?
+        tapSelectCandidates: [Exercise]?,
+        vsLastTimeLine: String? = nil
     ) {
         self.exerciseName = exerciseName
         self.lastSetLine = lastSetLine
@@ -29,6 +31,7 @@ public struct HUDProjection: Equatable, Sendable {
         self.isListening = isListening
         self.currentEntrySetLines = currentEntrySetLines
         self.tapSelectCandidates = tapSelectCandidates
+        self.vsLastTimeLine = vsLastTimeLine
     }
 
     @MainActor
@@ -42,11 +45,14 @@ public struct HUDProjection: Equatable, Sendable {
         let unit = model.displayUnit
         exerciseName = entry?.exercise.name ?? "No exercise yet"
         lastSetLine = entry?.sets.last.map { formattedSetLine($0, unit: unit) }
-        restLine = model.restStartedAt == nil ? nil : HUDProjection.clock(model.restElapsed)
+        restLine = model.restStartedAt == nil
+            ? nil
+            : "\(HUDProjection.clock(model.restElapsed)) / \(HUDProjection.clock(model.restTargetSeconds))"
         restTargetReached = model.isRestTargetReached
         isListening = model.isListening
         currentEntrySetLines = (entry?.sets ?? []).map { formattedSetLine($0, unit: unit) }
         tapSelectCandidates = model.tapSelectCandidates
+        vsLastTimeLine = model.previousWorkoutLine
     }
 
     /// `m:ss` count-up. Negative / sub-second clamps to `0:00`.

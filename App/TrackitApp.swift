@@ -9,6 +9,8 @@ import WorkoutLoggerApp
 @MainActor
 struct TrackitApp: App {
     @State private var model: WorkoutSessionModel
+    private let historyModel: WorkoutHistoryModel
+    private let store: SwiftDataWorkoutStore
     private let historyUnavailable: Bool
 
     init() {
@@ -17,6 +19,10 @@ struct TrackitApp: App {
         historyUnavailable = availability.isDegraded
 
         let store = SwiftDataWorkoutStore(context: ModelContext(availability.container))
+        self.store = store
+        self.historyModel = WorkoutHistoryModel(
+            store: store, historyUnavailable: availability.isDegraded
+        )
         let library = ExerciseLibrary(TrackitApp.seedExercises)
         let history = availability.isDegraded ? [] : store.history()
         let knownBests = TrackitApp.knownBests(from: history)
@@ -44,13 +50,15 @@ struct TrackitApp: App {
             haptics: SystemHaptics(),
             library: library,
             knownBestExercises: Set(knownBests.keys),
-            staleRecovery: staleRecovery
+            staleRecovery: staleRecovery,
+            history: { store.history() }
         ))
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView(model: model, historyUnavailable: historyUnavailable)
+            RootView(model: model, historyModel: historyModel, store: store,
+                     historyUnavailable: historyUnavailable)
         }
     }
 

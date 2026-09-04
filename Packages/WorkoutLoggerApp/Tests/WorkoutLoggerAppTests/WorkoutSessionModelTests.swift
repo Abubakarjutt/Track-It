@@ -24,6 +24,7 @@ struct WorkoutSessionModelTests {
         knownBests: [String: Double] = [:],
         knownBestExercises: Set<String>? = nil,
         unit: MassUnit = .kilograms,
+        history: @escaping () -> [Workout] = { [] },
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
     ) throws -> Rig {
         let container = try ModelContainer(
@@ -41,7 +42,8 @@ struct WorkoutSessionModelTests {
             engine: engine, transcriptSource: source, readbackVoice: voice,
             haptics: haptics, library: Self.library, unit: unit,
             capReadbackAtEarcon: capAtEarcon, now: now,
-            knownBestExercises: knownBestExercises ?? Set(knownBests.keys)
+            knownBestExercises: knownBestExercises ?? Set(knownBests.keys),
+            history: history
         )
         return Rig(model: model, source: source, voice: voice, haptics: haptics)
     }
@@ -49,6 +51,31 @@ struct WorkoutSessionModelTests {
     private func say(_ rig: Rig) async {
         rig.model.pressed()
         await rig.model.released()
+    }
+
+    private func makeMultiExerciseModel(
+        script: [[String]],
+        exercises: [Exercise],
+        knownBestExercises: Set<String> = [],
+        history: (() -> [Workout])? = nil
+    ) throws -> (model: WorkoutSessionModel, store: SwiftDataWorkoutStore, haptics: SpyHaptics) {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let library = ExerciseLibrary(exercises)
+        let engine = WorkoutEngine(store: store, library: library)
+        let haptics = SpyHaptics()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: ScriptedTranscriptSource(script),
+            readbackVoice: SpyReadbackVoice(), haptics: haptics, library: library,
+            knownBestExercises: knownBestExercises,
+            // Default: history reads this helper's own store, so a scripted
+            // "end workout" is visible to the celebration-gate re-derive.
+            history: history ?? { store.history() }
+        )
+        return (model, store, haptics)
     }
 
     @Test("a start-workout utterance opens a workout")
@@ -401,5 +428,139 @@ struct WorkoutSessionModelTests {
         #expect(discarded)
         #expect(model.pendingStaleWorkout == nil)
         #expect(model.workout == nil)   // engine never adopted it
+    }
+
+    @Test("previousWorkoutLine shows the last completed workout's top set and best estimate for the active exercise")
+    func previousWorkoutLineForActiveExercise() async throws {
+        let priorBench = Workout(
+            entries: [Entry(exercise: Self.bench, sets: [
+                LoggedSet(loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                          loadKilograms: 100, reps: 5, loggedAt: Date(timeIntervalSince1970: 10)),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 10), endedAt: Date(timeIntervalSince1970: 70)
+        )
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 90 for 5"]],
+            history: { [priorBench] }
+        )
+        await say(rig)   // start
+        await say(rig)   // bench 90 for 5 — active exercise becomes Bench
+
+        // e1RM(100,5) = 100 * 35 / 30 = 116.666… -> gymRound 116.7
+        #expect(rig.model.previousWorkoutLine == "Last time: top 100 kg · best est. 1RM 116.7 kg")
+    }
+
+    @Test("previousWorkoutLine is nil for an exercise with no prior history")
+    func previousWorkoutLineNilForNewExercise() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"]], history: { [] })
+        await say(rig); await say(rig)
+        #expect(rig.model.previousWorkoutLine == nil)
+    }
+
+    @Test("previousWorkoutLine ignores the workout currently in progress")
+    func previousWorkoutLineExcludesOpenWorkout() async throws {
+        // history() returns the open workout too — the engine re-saves it on every
+        // set — so the filter must drop the workout whose startedAt matches the open
+        // one. This test builds its own store so history() reads real saved state.
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let model = WorkoutSessionModel(
+            engine: engine,
+            transcriptSource: ScriptedTranscriptSource([
+                ["start workout"], ["bench 100 for 5"], ["bench 105 for 5"],
+            ]),
+            readbackVoice: SpyReadbackVoice(), haptics: SpyHaptics(), library: Self.library,
+            history: { store.history() }
+        )
+        for _ in 0..<3 { model.pressed(); await model.released() }
+
+        #expect(model.previousWorkoutLine == nil)  // the only stored workout is the open one
+    }
+
+    @Test("editActiveSet routes a corrected set through the engine and updates the projection")
+    func editActiveSetUpdatesLiveWorkout() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"]])
+        await say(rig); await say(rig)
+
+        rig.model.editActiveSet(0, to: LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 105, reps: 5, loggedAt: Date(timeIntervalSince1970: 0)
+        ))
+
+        #expect(rig.model.workout?.entries[0].sets[0].loadKilograms == 105)
+    }
+
+    @Test("removeActiveSet deletes the row and, when it empties the entry, moves the active exercise")
+    func removeActiveSetEmptiesEntry() async throws {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let squat = Exercise(name: "Back Squat", aliases: ["squat"])
+        let (model, _, _) = try makeMultiExerciseModel(
+            script: [["start workout"], ["bench 100 for 5"], ["squat 140 for 5"], ["bench"]],
+            exercises: [bench, squat]
+        )
+        for _ in 0..<4 { model.pressed(); await model.released() }
+        // Active exercise is Bench again, its entry has exactly one set.
+
+        model.removeActiveSet(0)
+
+        #expect(model.workout?.entries.map { $0.exercise.name } == ["Back Squat"])
+        #expect(model.activeExerciseName == "Back Squat")
+    }
+
+    @Test("the edit wrappers are a no-op when no workout is open")
+    func editWrappersNoOpWithoutWorkout() throws {
+        let rig = try makeRig(script: [])
+        rig.model.editActiveSet(0, to: LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 1, reps: 1, loggedAt: Date(timeIntervalSince1970: 0)
+        ))
+        rig.model.removeActiveSet(0)
+        #expect(rig.model.workout == nil)
+    }
+
+    @Test("a bare set after returning to an earlier exercise still reads back terse")
+    func bareSetReadbackAfterReturnIsStable() async throws {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let squat = Exercise(name: "Back Squat", aliases: ["squat"])
+        let (model, _, _) = try makeMultiExerciseModel(
+            script: [
+                ["start workout"], ["bench 100 for 5"], ["squat 140 for 3"], ["bench"], ["100 for 5"],
+            ],
+            exercises: [bench, squat]
+        )
+        for _ in 0..<5 { model.pressed(); await model.released() }
+
+        // Characterization: the last utterance is a bare set on the re-announced Bench
+        // entry. It must land on Bench (activeExerciseName), and the readback is terse.
+        #expect(model.activeExerciseName == "Bench Press")
+        #expect(model.workout?.entries.map { $0.exercise.name } == ["Bench Press", "Back Squat"])
+        #expect(model.workout?.entries[0].sets.count == 2)   // the bare set went to Bench, not Squat
+        #expect(model.lastReadback == .speak("100 for 5"))
+    }
+
+    @Test("a second same-session workout celebrates a set that beats the ended workout's best")
+    func secondWorkoutCelebratesAgainstEndedWorkout() async throws {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let (model, _, haptics) = try makeMultiExerciseModel(
+            script: [
+                ["start workout"], ["bench 100 for 5"], ["end workout"],
+                ["start workout"], ["bench 120 for 5"],
+            ],
+            exercises: [bench],
+            knownBestExercises: []                 // nothing seeded at launch
+        )
+
+        for _ in 0..<5 { model.pressed(); await model.released() }
+
+        // First workout's 100×5 is e1RM 116.7 — logged, not celebrated (first ever).
+        // "end workout" re-derives the gate from history (wired to the helper's store
+        // by default), so "Bench Press" now counts as an exercise with a beatable
+        // record. The second workout's 120×5 (e1RM 140) beats it, so the
+        // personal-record haptic fires.
+        #expect(haptics.played.contains(.personalRecord))
     }
 }

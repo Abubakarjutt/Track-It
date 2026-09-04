@@ -11,6 +11,8 @@ import WorkoutLoggerApp
 /// `@Observable` reads in `body`). `import Combine` is for `Timer.publish`.
 struct RootView: View {
     let model: WorkoutSessionModel
+    let historyModel: WorkoutHistoryModel
+    let store: any WorkoutHistoryStore
     let historyUnavailable: Bool
 
     @Environment(\.scenePhase) private var scenePhase
@@ -23,7 +25,23 @@ struct RootView: View {
             if model.pendingStaleWorkout != nil {
                 LaunchGateView(model: model)
             } else {
-                HUDView(model: model, historyUnavailable: historyUnavailable)
+                NavigationStack {
+                    HUDView(model: model, historyUnavailable: historyUnavailable)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                NavigationLink {
+                                    HistoryListView(
+                                        historyModel: historyModel,
+                                        unit: model.displayUnit,
+                                        store: store,
+                                        historyUnavailable: historyUnavailable
+                                    )
+                                } label: {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                }
+                            }
+                        }
+                }
             }
         }
         .preferredColorScheme(.dark)

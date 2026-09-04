@@ -7,12 +7,23 @@ func numberString(_ value: Double) -> String {
     value == value.rounded() ? String(Int(value)) : String(value)
 }
 
-private let kilogramsPerPound = 0.45359237
+let kilogramsPerPound = 0.45359237
 
 /// Rounds to one decimal place, absorbing the float slop a kg↔lb conversion
 /// leaves behind before `numberString` decides whole-vs-fraction.
-private func gymRound(_ value: Double) -> Double {
+func gymRound(_ value: Double) -> Double {
     (value * 10).rounded() / 10
+}
+
+/// A load converted to the display unit and rounded, without a unit word — the
+/// value a chart axis plots.
+func displayLoad(_ kilograms: Double, unit: MassUnit) -> Double {
+    gymRound(unit == .pounds ? kilograms / kilogramsPerPound : kilograms)
+}
+
+/// A load in the display unit, rounded and unit-labelled: "100 kg" / "137.5 lb".
+func loadString(_ kilograms: Double, unit: MassUnit) -> String {
+    "\(numberString(displayLoad(kilograms, unit: unit))) \(unit == .pounds ? "lb" : "kg")"
 }
 
 /// One display line for a logged set: load + unit + reps (or reps alone, or a
@@ -24,9 +35,7 @@ func formattedSetLine(_ set: LoggedSet, unit: MassUnit) -> String {
     case .reps:
         let reps = set.reps ?? 0
         if let kg = set.loadKilograms, kg > 0 {
-            let shown = gymRound(unit == .pounds ? kg / kilogramsPerPound : kg)
-            let word = unit == .pounds ? "lb" : "kg"
-            line = "\(numberString(shown)) \(word) × \(reps)"
+            line = "\(loadString(kg, unit: unit)) × \(reps)"
         } else {
             line = "\(reps) reps"
         }
