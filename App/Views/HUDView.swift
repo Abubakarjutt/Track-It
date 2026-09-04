@@ -110,6 +110,19 @@ struct HUDView: View {
             DragGesture(minimumDistance: 20)
                 .onEnded { value in if value.translation.height < -40 { showingSetList = true } }
         )
+        .toolbar {
+            // The swipe-up gesture above is the sighted shortcut; this is the
+            // always-present entry point VoiceOver (and anyone else who can't
+            // or won't swipe) can actually reach — same sheet, same state.
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showingSetList = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                }
+                .accessibilityLabel("Set list for \(hud.exerciseName)")
+            }
+        }
     }
 
     @ViewBuilder private var restCard: some View {
@@ -141,6 +154,15 @@ struct HUDView: View {
                     .onChanged { _ in if !model.isListening { model.pressed() } }
                     .onEnded { _ in Task { await model.released() } }
             )
+            // Exposing this as a real accessibility button/element lets
+            // VoiceOver's double-tap-and-hold gesture drive the DragGesture
+            // above directly (it synthesizes a real touch-down/up at the
+            // element's frame) — without this, VoiceOver has no way to even
+            // select the control, let alone hold it.
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(hud.isListening ? "Listening" : "Hold to talk")
+            .accessibilityHint(hud.isListening ? "" : "Double-tap and hold to speak a set")
     }
 }
 
