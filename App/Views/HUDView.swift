@@ -16,8 +16,21 @@ struct HUDView: View {
     }
 
     @State private var showingSetList = false
+    @State private var editingRow: EditRow?
+
+    /// Identifiable wrapper so `.sheet(item:)` can carry the tapped row index.
+    private struct EditRow: Identifiable { let id: Int }
 
     private var hud: HUDProjection { HUDProjection(from: model) }
+
+    /// The active entry as a value (mirrors `HUDProjection.init(from:)`'s
+    /// resolution), so the editor can be seeded with the real `LoggedSet`.
+    private var activeEntry: Entry? {
+        let entries = model.workout?.entries
+        return model.activeExerciseName
+            .flatMap { name in entries?.last { $0.exercise.name == name } }
+            ?? entries?.last
+    }
 
     private var activeSheet: Binding<Sheet?> {
         Binding(
@@ -54,6 +67,12 @@ struct HUDView: View {
 
             restCard
 
+            if let vs = hud.vsLastTimeLine {
+                Text(vs)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
 
             talkButton
@@ -62,12 +81,29 @@ struct HUDView: View {
         .sheet(item: activeSheet) { sheet in
             switch sheet {
             case .setList:
-                SetListSheet(lines: hud.currentEntrySetLines)
+                SetListSheet(
+                    lines: hud.currentEntrySetLines,
+                    onEdit: { index in editingRow = EditRow(id: index) },
+                    onDelete: { index in model.removeActiveSet(index) }
+                )
             case .tapSelect:
                 TapSelectSheet(
                     candidates: hud.tapSelectCandidates ?? [],
                     onPick: { model.resolveTapSelect($0) }
                 )
+            }
+        }
+        .sheet(item: $editingRow) { row in
+            if let set = activeEntry?.sets[safe: row.id] {
+                NavigationStack {
+                    SetEditView(
+                        set: set,
+                        exerciseNames: [],                 // no cross-exercise move mid-workout (out of scope)
+                        unit: model.displayUnit,
+                        onSave: { model.editActiveSet(row.id, to: $0.set) },
+                        onDelete: { model.removeActiveSet(row.id) }
+                    )
+                }
             }
         }
         .gesture(
@@ -105,5 +141,11 @@ struct HUDView: View {
                     .onChanged { _ in if !model.isListening { model.pressed() } }
                     .onEnded { _ in Task { await model.released() } }
             )
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
