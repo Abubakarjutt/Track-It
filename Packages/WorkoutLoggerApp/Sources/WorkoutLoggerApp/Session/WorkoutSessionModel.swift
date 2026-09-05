@@ -66,8 +66,12 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let transcriptSource: TranscriptSource
     @ObservationIgnored private let readbackVoice: ReadbackVoice
     @ObservationIgnored private let haptics: Haptics
-    @ObservationIgnored private var library: ExerciseLibrary
-    @ObservationIgnored private var unit: MassUnit
+    // Tracked (not @ObservationIgnored): both change live via the setters
+    // below, and `displayUnit` reads `unit`, so an already-built surface
+    // holding this model — the History / Progress screens reached from the
+    // HUD toolbar — must re-render when the default unit or library swaps.
+    private var library: ExerciseLibrary
+    private var unit: MassUnit
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var knownBestExercises: Set<String>

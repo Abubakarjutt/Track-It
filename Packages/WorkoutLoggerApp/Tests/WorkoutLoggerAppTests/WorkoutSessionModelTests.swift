@@ -1,6 +1,7 @@
 import Testing
 import SwiftData
 import Foundation
+import Observation
 import WorkoutLoggerCore
 @testable import WorkoutLoggerApp
 
@@ -714,6 +715,28 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.hasActiveWorkout == true)
         await say(rig) // end
         #expect(rig.model.hasActiveWorkout == false)
+    }
+
+    @Test("updateDefaultUnit publishes an observation change for displayUnit")
+    func updateDefaultUnitIsObservable() throws {
+        // A box so the @Sendable onChange closure can record the callback
+        // without capturing a mutable local (Swift 6 concurrency).
+        final class Flag: @unchecked Sendable { var fired = false }
+        let flag = Flag()
+        let rig = try makeRig(script: [], unit: .kilograms)
+
+        withObservationTracking {
+            _ = rig.model.displayUnit
+        } onChange: {
+            flag.fired = true
+        }
+
+        rig.model.updateDefaultUnit(.pounds)
+
+        // Fails while `unit` is @ObservationIgnored: the HUD toolbar's
+        // History/Progress links read `model.displayUnit` and would not
+        // re-render on a live unit switch.
+        #expect(flag.fired)
     }
 
     @Test("refreshKnownBests re-derives the celebration gate from current history")
