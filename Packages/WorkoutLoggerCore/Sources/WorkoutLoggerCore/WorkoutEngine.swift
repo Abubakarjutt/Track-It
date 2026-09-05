@@ -153,7 +153,7 @@ public final class WorkoutEngine {
     public private(set) var restStartedAt: Date?
 
     private let store: WorkoutStore
-    private let library: ExerciseLibrary
+    private var library: ExerciseLibrary
     /// Best estimated 1RM per exercise (by name) known *before* this workout —
     /// seeded from history. The bar a set must clear to be a personal record.
     private let knownBests: [String: Double]
@@ -161,7 +161,7 @@ public final class WorkoutEngine {
     /// so far this workout.
     private var bestOneRepMax: [String: Double] = [:]
     /// The user's kg/lb preference — the default unit for a set with no spoken unit.
-    private let unit: MassUnit
+    private var unit: MassUnit
     /// The count-up rest timer's target — the rest period a template does not override.
     private let restTarget: TimeInterval
     /// The engine's clock. Injected so tests can pin timestamps.
@@ -348,6 +348,22 @@ public final class WorkoutEngine {
         } else {
             activeEntryIndex = workout?.entries.indices.last
         }
+    }
+
+    /// Replace the default unit applied to a spoken set that carries no unit
+    /// word. Read fresh on each `hear(_:)`, so a change between utterances is
+    /// consistent; already-stored sets keep the kilogram value they were
+    /// canonicalised to.
+    public func updateDefaultUnit(_ unit: MassUnit) {
+        self.unit = unit
+    }
+
+    /// Replace the exercise library used to resolve spoken names. Read fresh
+    /// on each `hear(_:)` via `postProcess` + `parse`, so a swap between
+    /// utterances is consistent; entries already logged embed their
+    /// `Exercise` by value and are unaffected.
+    public func updateLibrary(_ library: ExerciseLibrary) {
+        self.library = library
     }
 
     /// Interprets one spoken utterance (recogniser n-best in) and applies each

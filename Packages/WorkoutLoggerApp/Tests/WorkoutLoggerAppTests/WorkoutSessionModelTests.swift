@@ -1,6 +1,7 @@
 import Testing
 import SwiftData
 import Foundation
+import Observation
 import WorkoutLoggerCore
 @testable import WorkoutLoggerApp
 
@@ -664,5 +665,95 @@ struct WorkoutSessionModelTests {
         // record. The second workout's 120×5 (e1RM 140) beats it, so the
         // personal-record haptic fires.
         #expect(haptics.played.contains(.personalRecord))
+    }
+
+    @Test("updateDefaultUnit flips displayUnit and is forwarded to the engine")
+    func updateDefaultUnitFlipsDisplayUnitAndForwards() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench"], ["200 for 3"]], unit: .kilograms)
+        #expect(rig.model.displayUnit == .kilograms)
+        await say(rig) // start
+        await say(rig) // bench
+
+        rig.model.updateDefaultUnit(.pounds)
+        #expect(rig.model.displayUnit == .pounds)
+
+        await say(rig) // "200 for 3" — now defaults to pounds in the engine
+        #expect(rig.model.workout?.entries.first?.sets.first?.loadKilograms == 200 * 0.45359237)
+    }
+
+    @Test("updateLibrary lets a new exercise resolve through the model's own parse and the engine")
+    func updateLibraryResolvesNewExercise() async throws {
+        let rig = try makeRig(script: [["start workout"], ["incline press"]])
+        await say(rig) // start
+
+        let incline = Exercise(name: "Incline Press", aliases: ["incline press"])
+        rig.model.updateLibrary(ExerciseLibrary([Self.bench, incline]))
+        await say(rig) // "incline press"
+
+        #expect(rig.model.workout?.entries.map(\.exercise.name).contains("Incline Press") == true)
+        #expect(rig.model.activeExerciseName == "Incline Press")
+    }
+
+    @Test("updating unit mid-workout leaves the open workout and its entries intact")
+    func updateDefaultUnitMidWorkoutIsInert() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench"], ["100 for 5"]])
+        await say(rig); await say(rig); await say(rig)
+        let startedAt = rig.model.workout?.startedAt
+        let entries = rig.model.workout?.entries
+
+        rig.model.updateDefaultUnit(.pounds)
+
+        #expect(rig.model.workout?.startedAt == startedAt)
+        #expect(rig.model.workout?.entries == entries)
+    }
+
+    @Test("hasActiveWorkout tracks the open-workout lifecycle")
+    func hasActiveWorkoutLifecycle() async throws {
+        let rig = try makeRig(script: [["start workout"], ["end workout"]])
+        #expect(rig.model.hasActiveWorkout == false)
+        await say(rig) // start
+        #expect(rig.model.hasActiveWorkout == true)
+        await say(rig) // end
+        #expect(rig.model.hasActiveWorkout == false)
+    }
+
+    @Test("updateDefaultUnit publishes an observation change for displayUnit")
+    func updateDefaultUnitIsObservable() throws {
+        // A box so the @Sendable onChange closure can record the callback
+        // without capturing a mutable local (Swift 6 concurrency).
+        final class Flag: @unchecked Sendable { var fired = false }
+        let flag = Flag()
+        let rig = try makeRig(script: [], unit: .kilograms)
+
+        withObservationTracking {
+            _ = rig.model.displayUnit
+        } onChange: {
+            flag.fired = true
+        }
+
+        rig.model.updateDefaultUnit(.pounds)
+
+        // Fails while `unit` is @ObservationIgnored: the HUD toolbar's
+        // History/Progress links read `model.displayUnit` and would not
+        // re-render on a live unit switch.
+        #expect(flag.fired)
+    }
+
+    @Test("refreshKnownBests re-derives the celebration gate from current history")
+    func refreshKnownBestsFromHistory() async throws {
+        // Gate seeded as if history held a loaded working Bench Press set…
+        let rig = try makeRig(
+            script: [["start workout"], ["bench"], ["100 for 5"]],
+            knownBestExercises: ["Bench Press"],
+            history: { [] } // …but history is now empty
+        )
+        rig.model.refreshKnownBests()
+
+        await say(rig); await say(rig); await say(rig)
+
+        // First loaded working set for Bench Press with an empty gate is a
+        // baseline, not a celebration.
+        #expect(rig.haptics.played.contains(.logged))
+        #expect(rig.haptics.played.contains(.personalRecord) == false)
     }
 }

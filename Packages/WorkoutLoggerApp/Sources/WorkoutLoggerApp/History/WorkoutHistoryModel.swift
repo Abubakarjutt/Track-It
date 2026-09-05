@@ -31,6 +31,15 @@ public final class WorkoutHistoryModel {
         rows = isUnavailable ? [] : Array(store.history().filter(\.isEnded).reversed())
     }
 
+    /// Erase every stored workout, then reload. The exercise library and
+    /// preferences are separate stores and survive. `selected` is cleared so
+    /// the detail screen can't hold a workout that no longer exists.
+    public func deleteAllWorkoutData() {
+        store.deleteAllWorkouts()
+        selected = nil
+        reload()
+    }
+
     public func open(_ workout: Workout) {
         selected = rows.first { $0.startedAt == workout.startedAt }
     }

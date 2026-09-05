@@ -114,4 +114,24 @@ struct SwiftDataWorkoutStoreTests {
         #expect(store.openWorkout() == nil)
         #expect(store.history().count == 2)
     }
+
+    @Test("deleteAllWorkouts empties history and leaves colocated exercise records")
+    func deleteAllWorkouts() throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self, ExerciseRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+        let store = SwiftDataWorkoutStore(context: context)
+        store.save(workout(startedAt: 1_000, reps: 5, endedAt: 1_500))
+        store.save(workout(startedAt: 2_000, reps: 3, endedAt: 2_500))
+        context.insert(ExerciseRecord(name: "Bench Press", aliases: ["bench"]))
+        try context.save()
+
+        store.deleteAllWorkouts()
+
+        #expect(store.history().isEmpty)
+        let exercises = try context.fetch(FetchDescriptor<ExerciseRecord>())
+        #expect(exercises.count == 1)
+    }
 }

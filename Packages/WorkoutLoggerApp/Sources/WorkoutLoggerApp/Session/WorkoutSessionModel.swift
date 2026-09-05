@@ -66,8 +66,12 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let transcriptSource: TranscriptSource
     @ObservationIgnored private let readbackVoice: ReadbackVoice
     @ObservationIgnored private let haptics: Haptics
-    @ObservationIgnored private let library: ExerciseLibrary
-    @ObservationIgnored private let unit: MassUnit
+    // Tracked (not @ObservationIgnored): both change live via the setters
+    // below, and `displayUnit` reads `unit`, so an already-built surface
+    // holding this model — the History / Progress screens reached from the
+    // HUD toolbar — must re-render when the default unit or library swaps.
+    private var library: ExerciseLibrary
+    private var unit: MassUnit
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var knownBestExercises: Set<String>
@@ -142,10 +146,39 @@ public final class WorkoutSessionModel {
     /// The unit the HUD formats loads in — the injected preference.
     public var displayUnit: MassUnit { unit }
 
+    /// Replace the default kg/lb unit live. Updates the copy this model uses
+    /// for its own inspection parse and forwards to the engine, which owns
+    /// the authoritative apply. Display-only for already-logged sets.
+    public func updateDefaultUnit(_ unit: MassUnit) {
+        self.unit = unit
+        engine.updateDefaultUnit(unit)
+    }
+
+    /// Replace the exercise library live, on both this model's inspection
+    /// parse and the engine's authoritative one.
+    public func updateLibrary(_ library: ExerciseLibrary) {
+        self.library = library
+        engine.updateLibrary(library)
+    }
+
     /// True while a workout is open; the view maps it to `isIdleTimerDisabled`.
     public var keepScreenAwake: Bool {
         guard let workout else { return false }
         return !workout.isEnded
+    }
+
+    /// True while a workout is open and not yet ended — Settings uses it to
+    /// block "delete all workout data" mid-session.
+    public var hasActiveWorkout: Bool {
+        guard let workout else { return false }
+        return !workout.isEnded
+    }
+
+    /// Re-derive the personal-record celebration gate from current history.
+    /// The normal refresh happens when a workout ends; "delete all workout
+    /// data" wipes history with no such event, so it calls this explicitly.
+    public func refreshKnownBests() {
+        knownBestExercises = Self.exercisesWithLoadedWorkingSet(in: history())
     }
 
     public func pressed() {

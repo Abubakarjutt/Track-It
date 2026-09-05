@@ -792,6 +792,68 @@ struct WorkoutEngineTests {
         #expect(engine.restStartedAt == restBefore)
         #expect(engine.restStartedAt != nil)
     }
+
+    @Test("updateDefaultUnit changes the unit applied to a later set with no spoken unit")
+    func updateDefaultUnitAffectsLaterSets() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench press"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]), unit: .kilograms)
+        engine.startWorkout()
+        engine.hear(["bench press"])
+        engine.hear(["100 for 5"]) // default kilograms
+
+        engine.updateDefaultUnit(.pounds)
+        engine.hear(["200 for 3"]) // now defaults to pounds
+
+        let sets = engine.workout?.entries.first?.sets
+        #expect(sets?.count == 2)
+        #expect(sets?.first?.loadKilograms == 100)
+        #expect(sets?.last?.loadKilograms == 200 * 0.45359237)
+    }
+
+    @Test("updateDefaultUnit does not rewrite sets already stored")
+    func updateDefaultUnitLeavesStoredSetsAlone() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench press"])
+        let engine = WorkoutEngine(store: InMemoryWorkoutStore(), library: ExerciseLibrary([bench]), unit: .kilograms)
+        engine.startWorkout()
+        engine.hear(["bench press"])
+        engine.hear(["100 for 5"])
+
+        engine.updateDefaultUnit(.pounds)
+
+        #expect(engine.workout?.entries.first?.sets.first?.loadKilograms == 100)
+    }
+
+    @Test("updateLibrary makes a previously-unknown exercise resolvable on the next utterance")
+    func updateLibraryAddsResolvableExercise() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: .empty)
+        engine.startWorkout()
+        engine.hear(["incline dumbbell press"]) // unknown → no entry
+        #expect(engine.workout?.entries.isEmpty == true)
+
+        let incline = Exercise(name: "Incline Dumbbell Press", aliases: ["incline dumbbell press", "incline press"])
+        engine.updateLibrary(ExerciseLibrary([incline]))
+        engine.hear(["incline dumbbell press"])
+
+        #expect(engine.workout?.entries.map(\.exercise) == [incline])
+    }
+
+    @Test("updateLibrary leaves existing entries and personal records untouched")
+    func updateLibraryPreservesExistingWork() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench press"])
+        let engine = WorkoutEngine(store: InMemoryWorkoutStore(), library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench press"])
+        engine.hear(["100 for 5"])
+        let entriesBefore = engine.workout?.entries
+        let prCountBefore = engine.personalRecords.count
+
+        engine.updateLibrary(.empty)
+
+        #expect(engine.workout?.entries == entriesBefore)
+        #expect(engine.personalRecords.count == prCountBefore)
+    }
 }
 
 /// Test double for `WorkoutStore` — records every persisted revision in order.

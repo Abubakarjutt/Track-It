@@ -7,6 +7,9 @@ import WorkoutLoggerCore
 public protocol WorkoutHistoryStore: AnyObject {
     func history() -> [Workout]
     func save(_ workout: Workout)
+    /// Remove every stored workout. Anything else in the same container
+    /// (the exercise library) is left untouched.
+    func deleteAllWorkouts()
     var lastSaveError: Error? { get }
 }
 

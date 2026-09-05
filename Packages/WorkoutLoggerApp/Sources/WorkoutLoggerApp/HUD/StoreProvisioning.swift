@@ -27,7 +27,7 @@ public enum StoreAvailability {
 /// container flagged `.degraded`. An in-memory container that itself cannot be
 /// created is unrecoverable and traps (there is nowhere left to write).
 public func provisionStore(onDiskURL: URL) -> StoreAvailability {
-    let schema = Schema([WorkoutRecord.self])
+    let schema = Schema([WorkoutRecord.self, ExerciseRecord.self])
     do {
         let container = try ModelContainer(
             for: schema,

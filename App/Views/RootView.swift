@@ -14,6 +14,8 @@ struct RootView: View {
     let historyModel: WorkoutHistoryModel
     let store: any WorkoutHistoryStore
     let historyUnavailable: Bool
+    let settingsModel: SettingsModel
+    let onboardingModel: OnboardingModel
 
     @Environment(\.scenePhase) private var scenePhase
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -22,7 +24,9 @@ struct RootView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if model.pendingStaleWorkout != nil {
+            if onboardingModel.shouldShowOnboarding {
+                OnboardingView(model: onboardingModel)
+            } else if model.pendingStaleWorkout != nil {
                 LaunchGateView(model: model)
             } else {
                 NavigationStack {
@@ -38,6 +42,13 @@ struct RootView: View {
                                     )
                                 } label: {
                                     Image(systemName: "clock.arrow.circlepath")
+                                }
+                            }
+                            ToolbarItem(placement: .topBarTrailing) {
+                                NavigationLink {
+                                    SettingsView(model: settingsModel)
+                                } label: {
+                                    Image(systemName: "gearshape")
                                 }
                             }
                         }
