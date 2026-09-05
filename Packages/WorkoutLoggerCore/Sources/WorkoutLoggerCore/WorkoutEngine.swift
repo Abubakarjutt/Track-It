@@ -161,7 +161,7 @@ public final class WorkoutEngine {
     /// so far this workout.
     private var bestOneRepMax: [String: Double] = [:]
     /// The user's kg/lb preference — the default unit for a set with no spoken unit.
-    private let unit: MassUnit
+    private var unit: MassUnit
     /// The count-up rest timer's target — the rest period a template does not override.
     private let restTarget: TimeInterval
     /// The engine's clock. Injected so tests can pin timestamps.
@@ -348,6 +348,14 @@ public final class WorkoutEngine {
         } else {
             activeEntryIndex = workout?.entries.indices.last
         }
+    }
+
+    /// Replace the default unit applied to a spoken set that carries no unit
+    /// word. Read fresh on each `hear(_:)`, so a change between utterances is
+    /// consistent; already-stored sets keep the kilogram value they were
+    /// canonicalised to.
+    public func updateDefaultUnit(_ unit: MassUnit) {
+        self.unit = unit
     }
 
     /// Interprets one spoken utterance (recogniser n-best in) and applies each
