@@ -163,6 +163,20 @@ public final class WorkoutSessionModel {
         return !workout.isEnded
     }
 
+    /// True while a workout is open and not yet ended — Settings uses it to
+    /// block "delete all workout data" mid-session.
+    public var hasActiveWorkout: Bool {
+        guard let workout else { return false }
+        return !workout.isEnded
+    }
+
+    /// Re-derive the personal-record celebration gate from current history.
+    /// The normal refresh happens when a workout ends; "delete all workout
+    /// data" wipes history with no such event, so it calls this explicitly.
+    public func refreshKnownBests() {
+        knownBestExercises = Self.exercisesWithLoadedWorkingSet(in: history())
+    }
+
     public func pressed() {
         transcriptSource.beginUtterance()
         isListening = true

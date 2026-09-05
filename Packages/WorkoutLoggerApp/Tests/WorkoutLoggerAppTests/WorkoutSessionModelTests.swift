@@ -705,4 +705,32 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.workout?.startedAt == startedAt)
         #expect(rig.model.workout?.entries == entries)
     }
+
+    @Test("hasActiveWorkout tracks the open-workout lifecycle")
+    func hasActiveWorkoutLifecycle() async throws {
+        let rig = try makeRig(script: [["start workout"], ["end workout"]])
+        #expect(rig.model.hasActiveWorkout == false)
+        await say(rig) // start
+        #expect(rig.model.hasActiveWorkout == true)
+        await say(rig) // end
+        #expect(rig.model.hasActiveWorkout == false)
+    }
+
+    @Test("refreshKnownBests re-derives the celebration gate from current history")
+    func refreshKnownBestsFromHistory() async throws {
+        // Gate seeded as if history held a loaded working Bench Press set…
+        let rig = try makeRig(
+            script: [["start workout"], ["bench"], ["100 for 5"]],
+            knownBestExercises: ["Bench Press"],
+            history: { [] } // …but history is now empty
+        )
+        rig.model.refreshKnownBests()
+
+        await say(rig); await say(rig); await say(rig)
+
+        // First loaded working set for Bench Press with an empty gate is a
+        // baseline, not a celebration.
+        #expect(rig.haptics.played.contains(.logged))
+        #expect(rig.haptics.played.contains(.personalRecord) == false)
+    }
 }
