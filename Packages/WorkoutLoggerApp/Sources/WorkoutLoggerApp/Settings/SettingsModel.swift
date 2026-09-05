@@ -18,6 +18,7 @@ public final class SettingsModel {
 
     private var _unit: MassUnit
     public private(set) var exercises: [Exercise]
+    public private(set) var speechStatus: SpeechAuthorizationStatus
 
     public init(
         settingsStore: SettingsStore,
@@ -36,6 +37,7 @@ public final class SettingsModel {
         libraryStore.seedIfEmpty(seed)
         self._unit = settingsStore.defaultUnit
         self.exercises = libraryStore.all()
+        self.speechStatus = speechAuthorization.status
 
         session.updateDefaultUnit(_unit)
         session.updateLibrary(ExerciseLibrary(exercises))
@@ -83,4 +85,17 @@ public final class SettingsModel {
         exercises = libraryStore.all()
         session.updateLibrary(currentLibrary)
     }
+
+    // MARK: - Speech
+
+    /// Re-read speech authorization — call on Settings `.onAppear` and when
+    /// the app returns to the foreground, since the user can change it in
+    /// iOS Settings and come back.
+    public func refreshSpeechStatus() {
+        speechStatus = speechAuthorization.status
+    }
+
+    /// Whether to show the "Open iOS Settings" recovery row. Only `denied`
+    /// is recoverable there; `unavailable` is a device/locale limitation.
+    public var showsSpeechRecoveryRow: Bool { speechStatus == .denied }
 }

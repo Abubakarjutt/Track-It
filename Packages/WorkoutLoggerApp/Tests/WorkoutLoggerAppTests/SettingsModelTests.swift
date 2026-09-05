@@ -121,4 +121,27 @@ struct SettingsModelTests {
         }
         #expect(rig.settings.exercises.map(\.name) == ["Bench Press"])
     }
+
+    @Test("speech status is read on init and re-read on refresh")
+    func speechStatusRefresh() throws {
+        let speech = FakeSpeechAuthorization(status: .notDetermined)
+        let rig = try makeRig(speech: speech)
+        #expect(rig.settings.speechStatus == .notDetermined)
+
+        speech.set(.denied)
+        rig.settings.refreshSpeechStatus()
+
+        #expect(rig.settings.speechStatus == .denied)
+    }
+
+    @Test("the recovery row shows for denied only")
+    func recoveryRowVisibility() throws {
+        let cases: [(SpeechAuthorizationStatus, Bool)] = [
+            (.granted, false), (.notDetermined, false), (.denied, true), (.unavailable, false),
+        ]
+        for (status, shows) in cases {
+            let rig = try makeRig(speech: FakeSpeechAuthorization(status: status))
+            #expect(rig.settings.showsSpeechRecoveryRow == shows)
+        }
+    }
 }
