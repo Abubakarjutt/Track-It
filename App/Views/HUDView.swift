@@ -235,12 +235,16 @@ struct HUDView: View {
                 }
             }
             // Exposing this as a real accessibility button/element lets
-            // VoiceOver's double-tap-and-hold gesture drive the DragGesture
-            // above directly (it synthesizes a real touch-down/up at the
-            // element's frame) — without this, VoiceOver has no way to even
-            // select the control, let alone hold it.
+            // VoiceOver select and describe the control at all. But `.isButton`
+            // alone only promises a plain double-tap activates it, and this
+            // control has no such action — a single double-tap would either
+            // do nothing or synthesize a zero-length touch that captures no
+            // audio. `.accessibilityDirectTouch()` is what actually lets a
+            // VoiceOver touch pass straight through to the DragGesture below,
+            // so the same hold gesture a sighted finger uses works here too.
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
+            .accessibilityDirectTouch()
             .accessibilityLabel(hud.isListening ? "Listening" : (hud.isProcessing ? "Working" : "Hold to talk"))
             .accessibilityHint(hud.isListening || hud.isProcessing ? "" : "Double-tap and hold to speak a set")
     }

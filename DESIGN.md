@@ -118,7 +118,7 @@ Small, disciplined palette: mostly black/white/gray, with color reserved for one
 ### Neutral
 - **System Secondary** (dynamic, `Color.secondary` / `.foregroundStyle(.secondary)`): Supporting text throughout — the "vs last time" line, history row subtitles, empty-state descriptions. Left as the system semantic token, not a fixed hex, so it tracks the platform.
 - **PR Yellow** (`#FFD60A`, system `Color.yellow`): The personal-record trophy badge (`trophy.fill`) in workout detail — the app's one deliberately celebratory mark.
-- **Error Red** (`#FF453A`, system `Color.red`): Reserved for things that went wrong and need the lifter's attention — save-error text in the workout detail list, and the live HUD's "Not logged" notice when a spoken set is dismissed unresolved. Not used for anything else.
+- **Error Red** (`#FF453A`, system `Color.red`): Reserved for things that went wrong and need the lifter's attention — save-error text in the workout detail list, and the live HUD's "Not logged" notice when a spoken set is dismissed unresolved (paired with the same haptic + earcon as any other dropped utterance — the red text is a confirmation for a glance, not the only signal). Not used for anything else.
 
 ### Named Rules
 **The One Meaning Rule.** Green means exactly one thing — "go / on-target" (listening, rest target reached). It is never used decoratively and never means anything else.
@@ -148,7 +148,7 @@ Both hold their 64pt/40pt size through every standard Dynamic Type step — a sc
 
 Two distinct layout modes:
 
-- **The HUD** is a single centered `VStack` (28pt spacing) padded 32pt from the edges: exercise name → last-set line → rest capsule → "vs last time" → spacer → full-width talk button. Nothing scrolls; everything fits one screen. A swipe-up gesture (drag past -40pt) reveals the current entry's set list as a sheet sized to `[.medium, .large]` detents.
+- **The HUD** is a single centered `VStack` (28pt spacing) padded 32pt from the edges: exercise name → last-set line → rest capsule → "vs last time" → spacer → full-width talk button, with an optional "History unavailable" `Label` (`exclamationmark.triangle`) above the exercise name when the persisted history couldn't load. Nothing scrolls; everything fits one screen. The current entry's set list opens as a sheet (`[.medium, .large]` detents) via two entry points to the same state: a swipe-up gesture (drag past -40pt) for a sighted, hands-free lift, and an always-present toolbar button (`list.bullet`) for VoiceOver and anyone who can't or won't swipe.
 - **Everything else** is a standard `NavigationStack` over system `List`/`Form` with `Section`s — history, workout detail, set editing, exercise progress. No custom grid, no bespoke card layout; density and spacing follow the system list/form defaults throughout.
 - The stale-workout resume gate (`LaunchGateView`) is a centered `VStack` (32pt spacing, 40pt padding) — the one other screen that shares the HUD's black canvas and centered-column layout rather than a list.
 
@@ -172,6 +172,7 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 - **Listening:** Fill switches to Go Green (`#30D158`), same black label, text changes to "Listening…". Driven by a `simultaneousGesture` press, not a tap — hold, don't tap.
 - **Processing:** Fill stays white (never a second accent), label reads "Working…", with a slow breathing opacity pulse while the released speech is still finalizing/parsing — off entirely under Reduce Motion, where the label change alone carries the state.
 - **Press:** The instant a touch (or VoiceOver's synthesized touch) registers — before `isListening` even flips — the button scales to 0.97 and a light impact haptic fires. Purely a touch acknowledgment, decoupled from listening/processing, so it never waits on the model.
+- **VoiceOver:** `.accessibilityAddTraits(.isButton)` plus `.accessibilityDirectTouch()` — the latter is what actually matters: it passes a VoiceOver touch straight through to the same hold gesture a sighted finger uses, rather than only promising a plain double-tap the control has no action for.
 
 ### Rest Capsule (signature component)
 - **Character:** Blunt and confident, same as the talk button, at a smaller scale.
@@ -200,7 +201,7 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 - **Do** use SF Rounded display type only for the last-set line and the rest clock — the "Two Numbers Rule."
 - **Do** use monospaced digits for any text that's a formatted quantity (set lines, timers) so numbers don't jiggle when they update.
 - **Do** default to stock system List/Form/NavigationStack for every screen outside the HUD — that plainness is correct for post-workout review, not a placeholder waiting for polish.
-- **Do** size any new mid-workout control at least as generously as the talk button (96pt) — it may be used without looking.
+- **Do** size any new mid-workout *logging* control — one meant to be found and used without looking at the screen — at least as generously as the talk button (96pt). The one named exception is the HUD's toolbar set-list button: it's a VoiceOver/sighted-fallback entry point, not a hands-busy primary control, so it sits at the platform's standard toolbar size instead.
 
 ### Don't:
 - **Don't** add shadows, blur, or glassmorphism anywhere — depth comes from fill vs. stroke only.

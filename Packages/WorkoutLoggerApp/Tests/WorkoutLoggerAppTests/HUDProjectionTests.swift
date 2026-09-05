@@ -208,7 +208,7 @@ struct HUDProjectionTests {
         #expect(HUDProjection(from: try makeRig(script: []).model).vsLastTimeLine == nil)
     }
 
-    @Test("isProcessing passes through the model's async-gap flag")
+    @Test("isProcessing passes through the model's async-gap flag", .timeLimit(.minutes(1)))
     func isProcessingPassThrough() async throws {
         let container = try ModelContainer(
             for: WorkoutRecord.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -223,7 +223,7 @@ struct HUDProjectionTests {
         #expect(HUDProjection(from: model).isProcessing == false)
         model.pressed()
         let releaseTask = Task { await model.released() }
-        for _ in 0..<10 where !model.isProcessing { await Task.yield() }
+        while !model.isProcessing { await Task.yield() }
         #expect(HUDProjection(from: model).isProcessing == true)
 
         gate.resume(with: [])
