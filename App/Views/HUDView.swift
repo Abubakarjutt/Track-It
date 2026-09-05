@@ -25,6 +25,24 @@ struct HUDView: View {
     /// with none of the model's async involved.
     @GestureState private var isPressedDown = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    // The HUD's two display numerals (DESIGN.md's "Two Numbers Rule") stay at
+    // their fixed size through every standard Dynamic Type step — the whole
+    // point of the Blackout Board is a scoreboard readout that doesn't
+    // reflow underfoot. Only past the accessibility sizes do they grow,
+    // borrowing largeTitle/title's own scale ratio rather than a hand-picked
+    // multiplier.
+    @ScaledMetric(relativeTo: .largeTitle) private var scaledDisplaySize: CGFloat = 64
+    @ScaledMetric(relativeTo: .title) private var scaledDisplaySecondarySize: CGFloat = 40
+
+    private var displaySize: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? scaledDisplaySize : 64
+    }
+
+    private var displaySecondarySize: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? scaledDisplaySecondarySize : 40
+    }
 
     /// Identifiable wrapper so `.sheet(item:)` can carry the tapped row index.
     private struct EditRow: Identifiable { let id: Int }
@@ -68,7 +86,7 @@ struct HUDView: View {
                 .foregroundStyle(.white)
 
             Text(hud.lastSetLine ?? "—")
-                .font(.system(size: 64, weight: .bold, design: .rounded))
+                .font(.system(size: displaySize, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
@@ -140,7 +158,7 @@ struct HUDView: View {
     @ViewBuilder private var restCard: some View {
         if let restLine = hud.restLine {
             Text(restLine)
-                .font(.system(size: 40, weight: .medium, design: .rounded))
+                .font(.system(size: displaySecondarySize, weight: .medium, design: .rounded))
                 .foregroundStyle(hud.restTargetReached ? Color.green : Color.secondary)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)

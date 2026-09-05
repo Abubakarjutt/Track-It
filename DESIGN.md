@@ -142,6 +142,8 @@ Small, disciplined palette: mostly black/white/gray, with color reserved for one
 ### Named Rules
 **The Two Numbers Rule.** SF Rounded display type is reserved for exactly two values: the last set logged and the rest clock. Nothing else on the HUD, and nothing off the HUD, uses it.
 
+Both hold their 64pt/40pt size through every standard Dynamic Type step — a scoreboard readout that doesn't reflow underfoot — and only grow past that at the accessibility text sizes, via `@ScaledMetric` borrowing largeTitle's/title's own scale ratio rather than a hand-picked multiplier.
+
 ## Layout
 
 Two distinct layout modes:
