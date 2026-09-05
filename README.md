@@ -7,7 +7,11 @@ once, say each set as you finish it — *"225 for 5"* — and it's logged, read
 back, and confirmed with a haptic. No unlocking the phone, no tapping through
 a form between sets, no signal required.
 
-`iOS 17+` · `Swift 6` · `SwiftUI + SwiftData` · `on-device speech, fully offline` · `pre-launch`
+![Platform](https://img.shields.io/badge/platform-iOS_17%2B-000000?style=flat-square)
+![Swift](https://img.shields.io/badge/Swift-6.0-000000?style=flat-square&logo=swift&logoColor=white)
+![Stack](https://img.shields.io/badge/stack-SwiftUI_%2B_SwiftData-000000?style=flat-square)
+![Speech](https://img.shields.io/badge/speech-on--device%2C_offline-30D158?style=flat-square)
+![Status](https://img.shields.io/badge/status-pre--launch-lightgrey?style=flat-square)
 
 ---
 
