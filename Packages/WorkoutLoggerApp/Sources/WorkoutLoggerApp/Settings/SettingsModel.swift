@@ -1,0 +1,59 @@
+import Observation
+import WorkoutLoggerCore
+
+/// Owns the live preference values and the derived exercise library, and
+/// pushes unit / library changes one-directionally into the session (which
+/// forwards to the engine). Persistence is split: unit + onboarding flag in
+/// `SettingsStore` (UserDefaults); the library in `ExerciseLibraryStore`
+/// (SwiftData). "Delete all workout data" is orchestrated here but touches
+/// only the workout store.
+@MainActor
+@Observable
+public final class SettingsModel {
+    @ObservationIgnored private let settingsStore: SettingsStore
+    @ObservationIgnored private let libraryStore: ExerciseLibraryStore
+    @ObservationIgnored private let speechAuthorization: SpeechAuthorization
+    @ObservationIgnored private let session: WorkoutSessionModel
+    @ObservationIgnored private let historyModel: WorkoutHistoryModel
+
+    private var _unit: MassUnit
+    public private(set) var exercises: [Exercise]
+
+    public init(
+        settingsStore: SettingsStore,
+        libraryStore: ExerciseLibraryStore,
+        speechAuthorization: SpeechAuthorization,
+        session: WorkoutSessionModel,
+        historyModel: WorkoutHistoryModel,
+        seed: [Exercise] = defaultExerciseSeed
+    ) {
+        self.settingsStore = settingsStore
+        self.libraryStore = libraryStore
+        self.speechAuthorization = speechAuthorization
+        self.session = session
+        self.historyModel = historyModel
+
+        libraryStore.seedIfEmpty(seed)
+        self._unit = settingsStore.defaultUnit
+        self.exercises = libraryStore.all()
+
+        session.updateDefaultUnit(_unit)
+        session.updateLibrary(ExerciseLibrary(exercises))
+    }
+
+    /// The kg/lb default. Setting it (to a new value) persists and pushes
+    /// live to the session and engine. `_unit` is a plain stored property so
+    /// `@Observable` tracks reads of `unit` through it.
+    public var unit: MassUnit {
+        get { _unit }
+        set {
+            guard newValue != _unit else { return }
+            _unit = newValue
+            settingsStore.defaultUnit = newValue
+            session.updateDefaultUnit(newValue)
+        }
+    }
+
+    /// The library as it currently stands — what gets pushed on any edit.
+    public var currentLibrary: ExerciseLibrary { ExerciseLibrary(exercises) }
+}
