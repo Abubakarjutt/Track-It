@@ -131,6 +131,22 @@ struct WorkoutHistoryModelTests {
         #expect(model.rows.isEmpty)
         #expect(model.isUnavailable)
     }
+
+    @Test("deleteAllWorkoutData clears the rows and the store")
+    func deleteAllWorkoutData() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        store.save(workout(started: 3_000, ended: 3_500, sets: [working(110, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows[0])
+        #expect(model.rows.count == 2)
+
+        model.deleteAllWorkoutData()
+
+        #expect(model.rows.isEmpty)
+        #expect(model.selected == nil)
+        #expect(store.history().isEmpty)
+    }
 }
 
 private final class FailingHistoryStore: WorkoutHistoryStore {
@@ -141,4 +157,5 @@ private final class FailingHistoryStore: WorkoutHistoryStore {
     init(_ stored: [Workout]) { self.stored = stored }
     func history() -> [Workout] { stored }
     func save(_ workout: Workout) { lastSaveError = Boom() } // never actually stores
+    func deleteAllWorkouts() { stored = [] }
 }

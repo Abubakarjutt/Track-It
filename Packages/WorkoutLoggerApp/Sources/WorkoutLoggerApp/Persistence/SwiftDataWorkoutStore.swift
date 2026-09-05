@@ -59,6 +59,19 @@ public final class SwiftDataWorkoutStore: WorkoutStore {
         }
     }
 
+    /// Removes every `WorkoutRecord`. Exercise-library records and any
+    /// `SettingsStore` values live elsewhere and are untouched. A failure is
+    /// surfaced through `lastSaveError`, consistent with `save`.
+    public func deleteAllWorkouts() {
+        lastSaveError = nil
+        do {
+            try context.delete(model: WorkoutRecord.self)
+            try context.save()
+        } catch {
+            lastSaveError = error
+        }
+    }
+
     public func history() -> [Workout] {
         let descriptor = FetchDescriptor<WorkoutRecord>(
             sortBy: [SortDescriptor(\.startedAt, order: .forward)]
