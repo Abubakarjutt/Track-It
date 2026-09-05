@@ -51,6 +51,16 @@ public final class WorkoutSessionModel {
     /// exercise has no prior history. Feeds the HUD "vs last time" row. Load and
     /// estimate only: `ExerciseSession` carries no rep count.
     public private(set) var previousWorkoutLine: String?
+    /// True right after a tap-select shortlist was dismissed without a pick —
+    /// the spoken set was real but is now gone, and on an eyes-free app a
+    /// silent drop is indistinguishable from a successful log. Cleared by the
+    /// next `pressed()`, so it only lives until the user acts again.
+    public private(set) var notLoggedNotice = false
+    /// True across the async gap between releasing the talk button and the
+    /// transcript resolving — recognition finalizing, parse running, engine
+    /// applying. The lifter's finger is already off the button here, so
+    /// without this the HUD would silently sit idle mid-work.
+    public private(set) var isProcessing = false
 
     @ObservationIgnored private let engine: WorkoutEngine
     @ObservationIgnored private let transcriptSource: TranscriptSource
@@ -66,6 +76,7 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private var announcedThisWorkout: Set<String> = []
     @ObservationIgnored private var lastTranscript = ""
     @ObservationIgnored private var restReachedFired = false
+    @ObservationIgnored private var inFlightReleases = 0
 
     public init(
         engine: WorkoutEngine,
@@ -140,10 +151,23 @@ public final class WorkoutSessionModel {
     public func pressed() {
         transcriptSource.beginUtterance()
         isListening = true
+        notLoggedNotice = false
     }
 
     public func released() async {
         isListening = false
+        // A depth counter, not a flag: a quick press-release-press-release
+        // (plausible when a lifter thinks the first one didn't take) starts
+        // a second released() while the first is still awaiting its
+        // transcript. A plain Bool would let the first call's `defer` clear
+        // isProcessing out from under the second, showing "Hold to talk"
+        // while a transcript is still being resolved.
+        inFlightReleases += 1
+        isProcessing = true
+        defer {
+            inFlightReleases -= 1
+            isProcessing = inFlightReleases > 0
+        }
         let hypotheses: [String]
         do {
             hypotheses = try await transcriptSource.endUtterance()
@@ -166,8 +190,20 @@ public final class WorkoutSessionModel {
 
     /// Dismiss the tap-select shortlist without picking anything. The pending
     /// utterance is dropped and the workout is left exactly as it was.
+    ///
+    /// A no-op when there's no shortlist up — the HUD's shared sheet binding
+    /// calls this on every dismissal, including closing the unrelated set
+    /// list, so without this guard closing that sheet would falsely raise
+    /// "Not logged" over a set that was never spoken.
     public func dismissTapSelect() {
+        guard tapSelectCandidates != nil else { return }
         tapSelectCandidates = nil
+        notLoggedNotice = true
+        // Same eyes-free rule as the endUtterance failure path in released():
+        // a dropped set gets a haptic and an earcon, not just a footnote the
+        // lifter isn't looking at.
+        haptics.play(.notCaught)
+        readbackVoice.perform(.earcon)
     }
 
     public func tick() {

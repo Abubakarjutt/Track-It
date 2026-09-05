@@ -17,6 +17,32 @@ struct HUDView: View {
 
     @State private var showingSetList = false
     @State private var editingRow: EditRow?
+    /// Drives the talk button's processing pulse — see `talkButton`.
+    @State private var isPulsingDim = false
+    /// True for exactly as long as a finger (or VoiceOver's synthesized touch)
+    /// is down on the talk button — resets itself on release. Purely a touch
+    /// acknowledgment: independent of `isListening`, so it answers instantly,
+    /// with none of the model's async involved.
+    @GestureState private var isPressedDown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    // The HUD's two display numerals (DESIGN.md's "Two Numbers Rule") stay at
+    // their fixed size through every standard Dynamic Type step — the whole
+    // point of the Blackout Board is a scoreboard readout that doesn't
+    // reflow underfoot. Only past the accessibility sizes do they grow,
+    // borrowing largeTitle/title's own scale ratio rather than a hand-picked
+    // multiplier.
+    @ScaledMetric(relativeTo: .largeTitle) private var scaledDisplaySize: CGFloat = 64
+    @ScaledMetric(relativeTo: .title) private var scaledDisplaySecondarySize: CGFloat = 40
+
+    private var displaySize: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? scaledDisplaySize : 64
+    }
+
+    private var displaySecondarySize: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? scaledDisplaySecondarySize : 40
+    }
 
     /// Identifiable wrapper so `.sheet(item:)` can carry the tapped row index.
     private struct EditRow: Identifiable { let id: Int }
@@ -50,7 +76,12 @@ struct HUDView: View {
     var body: some View {
         VStack(spacing: 28) {
             if historyUnavailable {
-                Text("History unavailable")
+                // Same secondary color as "vs last time" below it — this is a
+                // persistent, non-actionable degraded state, not something
+                // gone wrong that needs Error Red's alarm — but the icon
+                // gives it a shape distinct from routine copy, so a glance
+                // doesn't mistake one for the other.
+                Label("History unavailable", systemImage: "exclamationmark.triangle")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -60,14 +91,18 @@ struct HUDView: View {
                 .foregroundStyle(.white)
 
             Text(hud.lastSetLine ?? "—")
-                .font(.system(size: 64, weight: .bold, design: .rounded))
+                .font(.system(size: displaySize, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
 
             restCard
 
-            if let vs = hud.vsLastTimeLine {
+            if hud.notLoggedNotice {
+                Text("Not logged — say the set again")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            } else if let vs = hud.vsLastTimeLine {
                 Text(vs)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -110,37 +145,108 @@ struct HUDView: View {
             DragGesture(minimumDistance: 20)
                 .onEnded { value in if value.translation.height < -40 { showingSetList = true } }
         )
+        .toolbar {
+            // The swipe-up gesture above is the sighted shortcut; this is the
+            // always-present entry point VoiceOver (and anyone else who can't
+            // or won't swipe) can actually reach — same sheet, same state.
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showingSetList = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                }
+                .accessibilityLabel("Set list for \(hud.exerciseName)")
+            }
+        }
     }
 
     @ViewBuilder private var restCard: some View {
         if let restLine = hud.restLine {
-            Text(restLine)
-                .font(.system(size: 40, weight: .medium, design: .rounded))
-                .foregroundStyle(hud.restTargetReached ? Color.green : Color.secondary)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(hud.restTargetReached ? Color.green : Color.secondary.opacity(0.4), lineWidth: 2)
-                )
+            HStack(spacing: 8) {
+                Text(restLine)
+                    .font(.system(size: displaySecondarySize, weight: .medium, design: .rounded))
+                if hud.restTargetReached {
+                    // A shape, not just a color, says "reached" — green alone
+                    // is invisible to a colorblind glance.
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: displaySecondarySize * 0.5, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(hud.restTargetReached ? Color.green : Color.secondary)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(hud.restTargetReached ? Color.green : Color.secondary.opacity(0.4), lineWidth: 2)
+            )
         }
     }
 
+    private var talkButtonLabel: String {
+        if hud.isListening { return "Listening…" }
+        if hud.isProcessing { return "Working…" }
+        return "Hold to talk"
+    }
+
     private var talkButton: some View {
-        Text(hud.isListening ? "Listening…" : "Hold to talk")
+        Text(talkButtonLabel)
             .font(.title3.weight(.semibold))
             .foregroundStyle(.black)
+            .contentTransition(.opacity)
             .frame(maxWidth: .infinity)
             .frame(height: 96)
             .background(
                 RoundedRectangle(cornerRadius: 24)
                     .fill(hud.isListening ? Color.green : Color.white)
+                    // A slow breathing dim while the finalized transcript is
+                    // still being recognized/parsed — the finger is already
+                    // off the button here, so idle-white alone would read as
+                    // "done" a beat before it actually is. Never colored: a
+                    // second accent would break the One Meaning Rule.
+                    .opacity(hud.isProcessing && isPulsingDim ? 0.55 : 1)
             )
+            .animation(.easeOut(duration: 0.15), value: talkButtonLabel)
+            // A real button gives you back a physical compression the instant
+            // you touch it — flat fill/color changes alone don't. This is
+            // that: it answers to the touch itself, not to isListening, so it
+            // never waits on the model.
+            .scaleEffect(isPressedDown ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: isPressedDown)
+            .sensoryFeedback(.impact(weight: .light), trigger: isPressedDown) { wasDown, isDown in
+                isDown && !wasDown
+            }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($isPressedDown) { _, state, _ in state = true }
                     .onChanged { _ in if !model.isListening { model.pressed() } }
                     .onEnded { _ in Task { await model.released() } }
             )
+            .onChange(of: hud.isProcessing) { _, isProcessing in
+                guard !reduceMotion else { return }
+                if isProcessing {
+                    withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+                        isPulsingDim = true
+                    }
+                } else {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        isPulsingDim = false
+                    }
+                }
+            }
+            // Exposing this as a real accessibility button/element lets
+            // VoiceOver select and describe the control at all. But `.isButton`
+            // alone only promises a plain double-tap activates it, and this
+            // control has no such action — a single double-tap would either
+            // do nothing or synthesize a zero-length touch that captures no
+            // audio. `.accessibilityDirectTouch()` is what actually lets a
+            // VoiceOver touch pass straight through to the DragGesture below,
+            // so the same hold gesture a sighted finger uses works here too.
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityDirectTouch()
+            .accessibilityLabel(hud.isListening ? "Listening" : (hud.isProcessing ? "Working" : "Hold to talk"))
+            .accessibilityHint(hud.isListening || hud.isProcessing ? "" : "Double-tap and hold to speak a set")
     }
 }
 

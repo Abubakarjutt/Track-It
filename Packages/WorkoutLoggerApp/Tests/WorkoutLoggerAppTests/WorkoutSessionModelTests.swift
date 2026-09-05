@@ -242,6 +242,108 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.workout == before)
     }
 
+    @Test("dismissTapSelect surfaces a not-logged notice; the next press clears it")
+    func dismissTapSelectSurfacesNotice() async throws {
+        let rig = try makeRig(script: [["start workout"], ["flurbo"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates != nil)
+        #expect(rig.model.notLoggedNotice == false)
+
+        rig.model.dismissTapSelect()
+        #expect(rig.model.notLoggedNotice == true)
+
+        rig.model.pressed()
+        #expect(rig.model.notLoggedNotice == false)
+    }
+
+    @Test("resolveTapSelect (picking a candidate) never raises the not-logged notice")
+    func resolveTapSelectLeavesNoticeClear() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench bruss 100 for 5"]])
+        await say(rig); await say(rig)
+        try #require(rig.model.tapSelectCandidates?.isEmpty == false)
+
+        rig.model.resolveTapSelect(Self.bench)
+
+        #expect(rig.model.notLoggedNotice == false)
+    }
+
+    @Test("dismissTapSelect with no shortlist up is a no-op — the HUD's shared sheet binding calls this on every dismissal, including closing the unrelated set list")
+    func dismissTapSelectWithNoCandidatesIsANoOp() async throws {
+        let rig = try makeRig(script: [["start workout"]])
+        await say(rig)
+        try #require(rig.model.tapSelectCandidates == nil)
+
+        rig.model.dismissTapSelect()
+
+        #expect(rig.model.notLoggedNotice == false)
+        #expect(rig.haptics.played.isEmpty)
+        #expect(rig.voice.performed.isEmpty)
+    }
+
+    @Test("isProcessing is true only across the gap between released() and the transcript resolving", .timeLimit(.minutes(1)))
+    func isProcessingTracksTheAsyncGap() async throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let gate = GatedTranscriptSource()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: gate, readbackVoice: SpyReadbackVoice(),
+            haptics: SpyHaptics(), library: Self.library
+        )
+
+        model.pressed()
+        #expect(model.isProcessing == false)
+
+        let releaseTask = Task { await model.released() }
+        while !model.isProcessing { await Task.yield() }
+        #expect(model.isProcessing == true)
+
+        gate.resume(with: [])
+        await releaseTask.value
+        #expect(model.isProcessing == false)
+    }
+
+    @Test("isProcessing stays true across overlapping releases until the last one resolves", .timeLimit(.minutes(1)))
+    func isProcessingStaysTrueAcrossOverlappingReleases() async throws {
+        // A quick press-release-press-release — plausible when a lifter
+        // thinks the first one didn't take — starts a second released()
+        // while the first is still awaiting its transcript. isProcessing
+        // must reflect the OR of both, not just whichever one's defer runs
+        // last: dropping it early would show "Hold to talk" while a
+        // transcript is still being resolved.
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let gate = GatedTranscriptSource()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: gate, readbackVoice: SpyReadbackVoice(),
+            haptics: SpyHaptics(), library: Self.library
+        )
+
+        model.pressed()
+        let firstRelease = Task { await model.released() }
+        while gate.waitingCount < 1 { await Task.yield() }
+
+        model.pressed()
+        let secondRelease = Task { await model.released() }
+        while gate.waitingCount < 2 { await Task.yield() }
+        #expect(model.isProcessing == true)
+
+        gate.resume(with: [])
+        await firstRelease.value
+        #expect(model.isProcessing == true) // second release is still in flight
+
+        gate.resume(with: [])
+        await secondRelease.value
+        #expect(model.isProcessing == false)
+    }
+
     @Test("tick fires restReached once after the rest target passes, then not again")
     func restReachedOnce() async throws {
         var clock = Date(timeIntervalSince1970: 1_000)
