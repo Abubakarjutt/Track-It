@@ -56,4 +56,31 @@ public final class SettingsModel {
 
     /// The library as it currently stands — what gets pushed on any edit.
     public var currentLibrary: ExerciseLibrary { ExerciseLibrary(exercises) }
+
+    // MARK: - Exercise library
+
+    /// Add a Custom exercise. Throws `ExerciseLibraryError` on an empty or
+    /// duplicate (case-insensitive) name, mutating nothing in that case.
+    public func addExercise(name: String, aliases: [String]) throws {
+        try libraryStore.add(Exercise(name: name, aliases: aliases))
+        refreshLibrary()
+    }
+
+    /// Rename and/or re-alias an existing Exercise.
+    public func updateExercise(named originalName: String, toName newName: String, aliases: [String]) throws {
+        try libraryStore.update(named: originalName, to: Exercise(name: newName, aliases: aliases))
+        refreshLibrary()
+    }
+
+    /// Remove an Exercise. Past Workouts that reference it are unaffected —
+    /// they embed `Exercise` by value.
+    public func deleteExercise(named name: String) {
+        libraryStore.delete(named: name)
+        refreshLibrary()
+    }
+
+    private func refreshLibrary() {
+        exercises = libraryStore.all()
+        session.updateLibrary(currentLibrary)
+    }
 }

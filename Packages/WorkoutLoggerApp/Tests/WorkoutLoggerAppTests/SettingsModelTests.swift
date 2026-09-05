@@ -80,4 +80,45 @@ struct SettingsModelTests {
         #expect(rig.settingsStore.defaultUnit == .kilograms)
         #expect(rig.session.displayUnit == .kilograms)
     }
+
+    @Test("addExercise persists, refreshes the list, and pushes the library live")
+    func addExercisePushes() throws {
+        let rig = try makeRig(seed: [Exercise(name: "Bench Press")])
+
+        try rig.settings.addExercise(name: "Romanian Deadlift", aliases: ["rdl", "romanians"])
+
+        #expect(rig.settings.exercises.map(\.name) == ["Bench Press", "Romanian Deadlift"])
+        #expect(rig.libraryStore.all().map(\.name).contains("Romanian Deadlift"))
+        #expect(rig.settings.currentLibrary.exercises.contains { $0.aliases.contains("rdl") })
+    }
+
+    @Test("updateExercise renames, re-aliases, and re-sorts")
+    func updateExercise() throws {
+        let rig = try makeRig(seed: [Exercise(name: "Row"), Exercise(name: "Curl")])
+
+        try rig.settings.updateExercise(named: "Row", toName: "Zzz Row", aliases: ["pendlay"])
+
+        #expect(rig.settings.exercises.map(\.name) == ["Curl", "Zzz Row"])
+        #expect(rig.settings.exercises.last?.aliases == ["pendlay"])
+    }
+
+    @Test("deleteExercise removes it and pushes the smaller library")
+    func deleteExercise() throws {
+        let rig = try makeRig(seed: [Exercise(name: "Bench Press"), Exercise(name: "Squat")])
+
+        rig.settings.deleteExercise(named: "Squat")
+
+        #expect(rig.settings.exercises.map(\.name) == ["Bench Press"])
+        #expect(rig.settings.currentLibrary.exercises.map(\.name) == ["Bench Press"])
+    }
+
+    @Test("a rejected add changes nothing")
+    func rejectedAddIsInert() throws {
+        let rig = try makeRig(seed: [Exercise(name: "Bench Press")])
+
+        #expect(throws: ExerciseLibraryError.duplicateName) {
+            try rig.settings.addExercise(name: "bench press", aliases: [])
+        }
+        #expect(rig.settings.exercises.map(\.name) == ["Bench Press"])
+    }
 }
