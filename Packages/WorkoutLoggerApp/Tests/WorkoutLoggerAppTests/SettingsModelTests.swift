@@ -55,7 +55,7 @@ struct SettingsModelTests {
     @Test("init does not reseed a populated library")
     func initNoReseed() throws {
         let libraryStore = InMemoryExerciseLibraryStore()
-        try libraryStore.add(Exercise(name: "Deadlift"))
+        libraryStore.add(Exercise(name: "Deadlift"))
         let rig = try makeRig(libraryStore: libraryStore, seed: [Exercise(name: "Bench Press")])
         #expect(rig.settings.exercises.map(\.name) == ["Deadlift"])
     }
@@ -63,7 +63,7 @@ struct SettingsModelTests {
     @Test("init pushes the loaded library into the session")
     func initPushesLibrary() throws {
         let libraryStore = InMemoryExerciseLibraryStore()
-        try libraryStore.add(Exercise(name: "Overhead Press", aliases: ["ohp"]))
+        libraryStore.add(Exercise(name: "Overhead Press", aliases: ["ohp"]))
         let rig = try makeRig(libraryStore: libraryStore)
 
         #expect(rig.settings.currentLibrary.exercises.map(\.name) == ["Overhead Press"])
@@ -120,6 +120,37 @@ struct SettingsModelTests {
             try rig.settings.addExercise(name: "bench press", aliases: [])
         }
         #expect(rig.settings.exercises.map(\.name) == ["Bench Press"])
+    }
+
+    @Test("addExercise rejects an empty name and changes nothing")
+    func addRejectsEmptyName() throws {
+        let rig = try makeRig(seed: [Exercise(name: "Bench Press")])
+
+        #expect(throws: ExerciseLibraryError.emptyName) {
+            try rig.settings.addExercise(name: "   ", aliases: [])
+        }
+        #expect(rig.settings.exercises.map(\.name) == ["Bench Press"])
+        #expect(rig.libraryStore.all().map(\.name) == ["Bench Press"])
+    }
+
+    @Test("updateExercise rejects renaming onto another exercise's name and changes nothing")
+    func updateRejectsCollision() throws {
+        let rig = try makeRig(seed: [Exercise(name: "Bench Press"), Exercise(name: "Squat")])
+
+        #expect(throws: ExerciseLibraryError.duplicateName) {
+            try rig.settings.updateExercise(named: "Squat", toName: "bench press", aliases: [])
+        }
+        #expect(rig.settings.exercises.map(\.name) == ["Bench Press", "Squat"])
+    }
+
+    @Test("updateExercise allows a case-only rename plus alias edit of the same record")
+    func updateAllowsCaseOnlyRename() throws {
+        let rig = try makeRig(seed: [Exercise(name: "Squat")])
+
+        try rig.settings.updateExercise(named: "Squat", toName: "SQUAT", aliases: ["back squat"])
+
+        #expect(rig.settings.exercises.map(\.name) == ["SQUAT"])
+        #expect(rig.settings.exercises.first?.aliases == ["back squat"])
     }
 
     @Test("speech status is read on init and re-read on refresh")

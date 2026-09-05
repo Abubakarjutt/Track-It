@@ -26,12 +26,16 @@ struct ExerciseLibraryStoreTests {
         #expect(store.all().map(\.name) == ["Bench", "Squat"])
     }
 
+    // Naming validation (trimmed non-empty, case-insensitively unique) lives
+    // at the SettingsModel seam now — see SettingsModelTests. This store is
+    // plain persistence and is tested as such.
+
     @Test("add / update / delete round-trip; all() is alphabetical")
     func crudRoundTrip() throws {
         let (store, _) = try makeStore()
-        try store.add(Exercise(name: "Row", aliases: ["barbell row"]))
-        try store.add(Exercise(name: "Curl"))
-        try store.update(named: "Row", to: Exercise(name: "Pendlay Row", aliases: ["pendlay"]))
+        store.add(Exercise(name: "Row", aliases: ["barbell row"]))
+        store.add(Exercise(name: "Curl"))
+        store.update(named: "Row", to: Exercise(name: "Pendlay Row", aliases: ["pendlay"]))
         store.delete(named: "Curl")
 
         let all = store.all()
@@ -39,37 +43,20 @@ struct ExerciseLibraryStoreTests {
         #expect(all.first?.aliases == ["pendlay"])
     }
 
-    @Test("empty and duplicate names are rejected")
-    func validation() throws {
+    @Test("update by original name is case-insensitive and re-aliases in place")
+    func updateMatchesCaseInsensitively() throws {
         let (store, _) = try makeStore()
-        try store.add(Exercise(name: "Bench Press"))
+        store.add(Exercise(name: "Squat"))
 
-        #expect(throws: ExerciseLibraryError.emptyName) {
-            try store.add(Exercise(name: "   "))
-        }
-        #expect(throws: ExerciseLibraryError.duplicateName) {
-            try store.add(Exercise(name: "bench press"))
-        }
-    }
+        store.update(named: "squat", to: Exercise(name: "Squat", aliases: ["back squat"]))
 
-    @Test("update lets a record keep its own name but rejects colliding with another")
-    func updateDuplicateRules() throws {
-        let (store, _) = try makeStore()
-        try store.add(Exercise(name: "Bench Press"))
-        try store.add(Exercise(name: "Squat"))
-
-        try store.update(named: "Squat", to: Exercise(name: "Squat", aliases: ["back squat"]))
         #expect(store.all().first(where: { $0.name == "Squat" })?.aliases == ["back squat"])
-
-        #expect(throws: ExerciseLibraryError.duplicateName) {
-            try store.update(named: "Squat", to: Exercise(name: "Bench Press"))
-        }
     }
 
     @Test("deleting an exercise leaves stored workouts intact")
     func deleteDoesNotTouchWorkouts() throws {
         let (store, context) = try makeStore()
-        try store.add(Exercise(name: "Bench Press"))
+        store.add(Exercise(name: "Bench Press"))
         let workoutStore = SwiftDataWorkoutStore(context: context)
         let set = LoggedSet(
             loadType: .external, effort: .reps, role: .working, grouping: .straight,

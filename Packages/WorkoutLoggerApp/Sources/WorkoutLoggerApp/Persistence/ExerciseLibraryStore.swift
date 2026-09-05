@@ -7,19 +7,20 @@ public enum ExerciseLibraryError: Error, Equatable {
     case duplicateName
 }
 
-/// Read/write access to the user's Exercise library.
+/// Plain persistence for the user's Exercise library. The naming rule
+/// (trimmed non-empty, case-insensitively unique) is enforced one level up
+/// at the `SettingsModel` seam via `ExerciseLibraryValidation`; these
+/// methods trust the `Exercise` they are handed.
 public protocol ExerciseLibraryStore: AnyObject {
     /// Every Exercise, sorted alphabetically by name (case-insensitive).
     func all() -> [Exercise]
     /// Insert `exercises` only when the store is currently empty.
     func seedIfEmpty(_ exercises: [Exercise])
-    /// Add a Custom exercise. Throws `.emptyName` for a blank name,
-    /// `.duplicateName` when the name (case-insensitively) already exists.
-    func add(_ exercise: Exercise) throws
-    /// Rename and/or re-alias the exercise currently named `originalName`.
-    /// Same validation as `add`, except the record being edited does not
-    /// count as its own duplicate. No-op if `originalName` is absent.
-    func update(named originalName: String, to exercise: Exercise) throws
+    /// Store `exercise` as a new record.
+    func add(_ exercise: Exercise)
+    /// Replace the record currently named `originalName` with `exercise`.
+    /// No-op if `originalName` is absent.
+    func update(named originalName: String, to exercise: Exercise)
     /// Remove the exercise named `name`. No-op if absent.
     func delete(named name: String)
 }
@@ -61,28 +62,16 @@ public final class SwiftDataExerciseLibraryStore: ExerciseLibraryStore {
         try? context.save()
     }
 
-    public func add(_ exercise: Exercise) throws {
-        let name = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { throw ExerciseLibraryError.emptyName }
-        guard !records().contains(where: {
-            $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
-        }) else { throw ExerciseLibraryError.duplicateName }
-        context.insert(ExerciseRecord(name: name, aliases: exercise.aliases))
+    public func add(_ exercise: Exercise) {
+        context.insert(ExerciseRecord(name: exercise.name, aliases: exercise.aliases))
         try? context.save()
     }
 
-    public func update(named originalName: String, to exercise: Exercise) throws {
-        let name = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { throw ExerciseLibraryError.emptyName }
-        let all = records()
-        guard let record = all.first(where: {
+    public func update(named originalName: String, to exercise: Exercise) {
+        guard let record = records().first(where: {
             $0.name.localizedCaseInsensitiveCompare(originalName) == .orderedSame
         }) else { return }
-        let collides = all.contains {
-            $0 !== record && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
-        }
-        guard !collides else { throw ExerciseLibraryError.duplicateName }
-        record.name = name
+        record.name = exercise.name
         record.aliases = exercise.aliases
         try? context.save()
     }

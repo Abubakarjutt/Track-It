@@ -38,8 +38,9 @@ public final class FakeSpeechAuthorization: SpeechAuthorization {
     }
 }
 
-/// In-memory `ExerciseLibraryStore` with the same validation rules as the
-/// SwiftData one, for model tests and previews.
+/// In-memory `ExerciseLibraryStore` for model tests and previews. Plain
+/// persistence, like the SwiftData store: the naming rule is enforced above
+/// it at the `SettingsModel` seam.
 public final class InMemoryExerciseLibraryStore: ExerciseLibraryStore {
     private var items: [Exercise] = []
     public init() {}
@@ -53,26 +54,15 @@ public final class InMemoryExerciseLibraryStore: ExerciseLibraryStore {
         items = exercises
     }
 
-    public func add(_ exercise: Exercise) throws {
-        let name = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { throw ExerciseLibraryError.emptyName }
-        guard !items.contains(where: {
-            $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
-        }) else { throw ExerciseLibraryError.duplicateName }
-        items.append(Exercise(name: name, aliases: exercise.aliases))
+    public func add(_ exercise: Exercise) {
+        items.append(exercise)
     }
 
-    public func update(named originalName: String, to exercise: Exercise) throws {
-        let name = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { throw ExerciseLibraryError.emptyName }
+    public func update(named originalName: String, to exercise: Exercise) {
         guard let index = items.firstIndex(where: {
             $0.name.localizedCaseInsensitiveCompare(originalName) == .orderedSame
         }) else { return }
-        let collides = items.enumerated().contains { offset, item in
-            offset != index && item.name.localizedCaseInsensitiveCompare(name) == .orderedSame
-        }
-        guard !collides else { throw ExerciseLibraryError.duplicateName }
-        items[index] = Exercise(name: name, aliases: exercise.aliases)
+        items[index] = exercise
     }
 
     public func delete(named name: String) {

@@ -64,13 +64,21 @@ public final class SettingsModel {
     /// Add a Custom exercise. Throws `ExerciseLibraryError` on an empty or
     /// duplicate (case-insensitive) name, mutating nothing in that case.
     public func addExercise(name: String, aliases: [String]) throws {
-        try libraryStore.add(Exercise(name: name, aliases: aliases))
+        let exercise = try ExerciseLibraryValidation.validated(
+            name: name, aliases: aliases, against: exercises
+        )
+        libraryStore.add(exercise)
         refreshLibrary()
     }
 
-    /// Rename and/or re-alias an existing Exercise.
+    /// Rename and/or re-alias an existing Exercise. Same naming rule as
+    /// `addExercise`, except the record being edited is not its own
+    /// collision — a case-only rename or an alias-only edit is allowed.
     public func updateExercise(named originalName: String, toName newName: String, aliases: [String]) throws {
-        try libraryStore.update(named: originalName, to: Exercise(name: newName, aliases: aliases))
+        let exercise = try ExerciseLibraryValidation.validated(
+            name: newName, aliases: aliases, against: exercises, renaming: originalName
+        )
+        libraryStore.update(named: originalName, to: exercise)
         refreshLibrary()
     }
 
