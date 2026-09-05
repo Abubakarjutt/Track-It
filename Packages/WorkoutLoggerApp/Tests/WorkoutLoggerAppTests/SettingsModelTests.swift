@@ -218,6 +218,29 @@ struct SettingsModelTests {
         #expect(store.history().isEmpty == false)
     }
 
+    @Test("export builds a document from the completed history; disabled when empty")
+    func exportHistory() throws {
+        let done = Workout(
+            entries: [Entry(exercise: Exercise(name: "Bench Press"), sets: [LoggedSet(
+                loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                loadKilograms: 100, reps: 5, durationSeconds: nil, distanceMeters: nil,
+                supersetRunID: nil, loggedAt: Date(timeIntervalSince1970: 10), note: nil)])],
+            startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 3_600)
+        )
+        let (withHistory, _, _, _) = try makeDeleteRig(script: [], seededHistory: [done])
+        #expect(withHistory.canExportHistory)
+
+        let document = withHistory.exportDocument(
+            format: .json, now: Date(timeIntervalSince1970: 86_400)
+        )
+        let archive = try JSONDecoder().decode(WorkoutArchive.self, from: document.data)
+        #expect(archive.workouts == [done])
+        #expect(document.suggestedFilename == "trackit-1970-01-02.json")
+
+        let (empty, _, _, _) = try makeDeleteRig(script: [])
+        #expect(empty.canExportHistory == false)
+    }
+
     @Test("delete-all clears rows and the PR gate when no workout is open")
     func deleteClearsWhenIdle() async throws {
         let done = Workout(

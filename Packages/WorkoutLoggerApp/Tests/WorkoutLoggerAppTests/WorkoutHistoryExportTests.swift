@@ -137,4 +137,18 @@ struct WorkoutHistoryExportTests {
         let text = String(decoding: csv.data, as: UTF8.self)
         #expect(text == "workout_started_at,workout_ended_at,exercise,load_type,effort,role,grouping,load_kilograms,load_unit,reps,duration_seconds,distance_meters,superset_run_id,note")
     }
+
+    @Test("workouts are emitted oldest-first whatever order they arrive in")
+    func ordersChronologically() throws {
+        let older = completed("Squat", [set(140, 3, at: 100)], from: 0, to: 3_600)
+        let newer = completed("Bench Press", [set(100, 5, at: 10_100)], from: 10_000, to: 12_000)
+
+        // History screens hand these over newest-first.
+        let document = WorkoutHistoryExport.document(
+            for: [newer, older], format: .json, generatedAt: Date(timeIntervalSince1970: 86_400)
+        )
+
+        let archive = try JSONDecoder().decode(WorkoutArchive.self, from: document.data)
+        #expect(archive.workouts == [older, newer])
+    }
 }

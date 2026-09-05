@@ -51,7 +51,10 @@ public enum WorkoutHistoryExport {
     public static func document(
         for workouts: [Workout], format: ExportFormat, generatedAt: Date
     ) -> ExportDocument {
-        let completed = workouts.filter(\.isEnded)
+        // Oldest-first, whatever order the caller supplies — the history
+        // screens hand workouts over newest-first, but an archive reads better
+        // chronologically.
+        let completed = workouts.filter(\.isEnded).sorted { $0.startedAt < $1.startedAt }
         switch format {
         case .json:
             let archive = WorkoutArchive(exportedAt: generatedAt, workouts: completed)
