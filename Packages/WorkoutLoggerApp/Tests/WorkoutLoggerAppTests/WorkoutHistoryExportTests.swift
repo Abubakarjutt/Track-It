@@ -63,4 +63,78 @@ struct WorkoutHistoryExportTests {
         #expect(json.suggestedFilename == "trackit-2026-09-05.json")
         #expect(csv.suggestedFilename == "trackit-2026-09-05.csv")
     }
+
+    @Test("CSV export is one row per set beneath a header, with loads in kilograms")
+    func csvRowPerSet() {
+        let workout = Workout(
+            entries: [
+                Entry(exercise: Exercise(name: "Bench Press"), sets: [
+                    LoggedSet(loadType: .external, effort: .reps, role: .warmup, grouping: .straight,
+                              loadKilograms: 60, reps: 10,
+                              loggedAt: Date(timeIntervalSince1970: 10)),
+                    LoggedSet(loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                              loadKilograms: 100, reps: 5,
+                              loggedAt: Date(timeIntervalSince1970: 90)),
+                ]),
+                Entry(exercise: Exercise(name: "Plank"), sets: [
+                    LoggedSet(loadType: .bodyweight, effort: .duration, role: .working, grouping: .straight,
+                              durationSeconds: 60,
+                              loggedAt: Date(timeIntervalSince1970: 200)),
+                ]),
+            ],
+            startedAt: Date(timeIntervalSince1970: 0),
+            endedAt: Date(timeIntervalSince1970: 3_600)
+        )
+
+        let document = WorkoutHistoryExport.document(
+            for: [workout], format: .csv, generatedAt: Date(timeIntervalSince1970: 86_400)
+        )
+        let lines = String(decoding: document.data, as: UTF8.self).split(
+            separator: "\n", omittingEmptySubsequences: false
+        )
+
+        #expect(lines.first == "workout_started_at,workout_ended_at,exercise,load_type,effort,role,grouping,load_kilograms,load_unit,reps,duration_seconds,distance_meters,superset_run_id,note")
+        #expect(lines.count == 4)
+        #expect(lines[1] == "1970-01-01T00:00:00Z,1970-01-01T01:00:00Z,Bench Press,external,reps,warmup,straight,60,kg,10,,,,")
+        #expect(lines[2] == "1970-01-01T00:00:00Z,1970-01-01T01:00:00Z,Bench Press,external,reps,working,straight,100,kg,5,,,,")
+        #expect(lines[3] == "1970-01-01T00:00:00Z,1970-01-01T01:00:00Z,Plank,bodyweight,duration,working,straight,,kg,,60,,,")
+    }
+
+    @Test("CSV fields carrying a comma, quote, or newline are RFC 4180 quoted")
+    func csvQuotesAwkwardFields() {
+        let workout = Workout(
+            entries: [Entry(exercise: Exercise(name: "Bench Press"), sets: [
+                LoggedSet(loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                          loadKilograms: 100, reps: 5,
+                          loggedAt: Date(timeIntervalSince1970: 10),
+                          note: "felt strong, \"easy\"\nnext: +5kg"),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 0),
+            endedAt: Date(timeIntervalSince1970: 3_600)
+        )
+
+        let document = WorkoutHistoryExport.document(
+            for: [workout], format: .csv, generatedAt: Date(timeIntervalSince1970: 86_400)
+        )
+        let text = String(decoding: document.data, as: UTF8.self)
+
+        #expect(text.hasSuffix(",\"felt strong, \"\"easy\"\"\nnext: +5kg\""))
+        // The embedded newline stays inside the quoted field, so the payload is
+        // still exactly two physical lines: header + the one set row.
+        #expect(text.split(separator: "\n", omittingEmptySubsequences: false).count == 3)
+    }
+
+    @Test("empty history still produces a well-formed document in each format")
+    func emptyHistoryIsWellFormed() throws {
+        let when = Date(timeIntervalSince1970: 86_400)
+
+        let json = WorkoutHistoryExport.document(for: [], format: .json, generatedAt: when)
+        let archive = try JSONDecoder().decode(WorkoutArchive.self, from: json.data)
+        #expect(archive.workouts.isEmpty)
+        #expect(archive.schemaVersion == WorkoutArchive.currentSchemaVersion)
+
+        let csv = WorkoutHistoryExport.document(for: [], format: .csv, generatedAt: when)
+        let text = String(decoding: csv.data, as: UTF8.self)
+        #expect(text == "workout_started_at,workout_ended_at,exercise,load_type,effort,role,grouping,load_kilograms,load_unit,reps,duration_seconds,distance_meters,superset_run_id,note")
+    }
 }
