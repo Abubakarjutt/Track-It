@@ -665,4 +665,44 @@ struct WorkoutSessionModelTests {
         // personal-record haptic fires.
         #expect(haptics.played.contains(.personalRecord))
     }
+
+    @Test("updateDefaultUnit flips displayUnit and is forwarded to the engine")
+    func updateDefaultUnitFlipsDisplayUnitAndForwards() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench"], ["200 for 3"]], unit: .kilograms)
+        #expect(rig.model.displayUnit == .kilograms)
+        await say(rig) // start
+        await say(rig) // bench
+
+        rig.model.updateDefaultUnit(.pounds)
+        #expect(rig.model.displayUnit == .pounds)
+
+        await say(rig) // "200 for 3" — now defaults to pounds in the engine
+        #expect(rig.model.workout?.entries.first?.sets.first?.loadKilograms == 200 * 0.45359237)
+    }
+
+    @Test("updateLibrary lets a new exercise resolve through the model's own parse and the engine")
+    func updateLibraryResolvesNewExercise() async throws {
+        let rig = try makeRig(script: [["start workout"], ["incline press"]])
+        await say(rig) // start
+
+        let incline = Exercise(name: "Incline Press", aliases: ["incline press"])
+        rig.model.updateLibrary(ExerciseLibrary([Self.bench, incline]))
+        await say(rig) // "incline press"
+
+        #expect(rig.model.workout?.entries.map(\.exercise.name).contains("Incline Press") == true)
+        #expect(rig.model.activeExerciseName == "Incline Press")
+    }
+
+    @Test("updating unit mid-workout leaves the open workout and its entries intact")
+    func updateDefaultUnitMidWorkoutIsInert() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench"], ["100 for 5"]])
+        await say(rig); await say(rig); await say(rig)
+        let startedAt = rig.model.workout?.startedAt
+        let entries = rig.model.workout?.entries
+
+        rig.model.updateDefaultUnit(.pounds)
+
+        #expect(rig.model.workout?.startedAt == startedAt)
+        #expect(rig.model.workout?.entries == entries)
+    }
 }

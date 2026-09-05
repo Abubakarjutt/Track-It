@@ -66,8 +66,8 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let transcriptSource: TranscriptSource
     @ObservationIgnored private let readbackVoice: ReadbackVoice
     @ObservationIgnored private let haptics: Haptics
-    @ObservationIgnored private let library: ExerciseLibrary
-    @ObservationIgnored private let unit: MassUnit
+    @ObservationIgnored private var library: ExerciseLibrary
+    @ObservationIgnored private var unit: MassUnit
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var knownBestExercises: Set<String>
@@ -141,6 +141,21 @@ public final class WorkoutSessionModel {
 
     /// The unit the HUD formats loads in — the injected preference.
     public var displayUnit: MassUnit { unit }
+
+    /// Replace the default kg/lb unit live. Updates the copy this model uses
+    /// for its own inspection parse and forwards to the engine, which owns
+    /// the authoritative apply. Display-only for already-logged sets.
+    public func updateDefaultUnit(_ unit: MassUnit) {
+        self.unit = unit
+        engine.updateDefaultUnit(unit)
+    }
+
+    /// Replace the exercise library live, on both this model's inspection
+    /// parse and the engine's authoritative one.
+    public func updateLibrary(_ library: ExerciseLibrary) {
+        self.library = library
+        engine.updateLibrary(library)
+    }
 
     /// True while a workout is open; the view maps it to `isIdleTimerDisabled`.
     public var keepScreenAwake: Bool {
