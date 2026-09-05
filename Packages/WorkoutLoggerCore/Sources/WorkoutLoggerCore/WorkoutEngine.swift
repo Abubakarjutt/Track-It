@@ -153,7 +153,7 @@ public final class WorkoutEngine {
     public private(set) var restStartedAt: Date?
 
     private let store: WorkoutStore
-    private let library: ExerciseLibrary
+    private var library: ExerciseLibrary
     /// Best estimated 1RM per exercise (by name) known *before* this workout —
     /// seeded from history. The bar a set must clear to be a personal record.
     private let knownBests: [String: Double]
@@ -356,6 +356,14 @@ public final class WorkoutEngine {
     /// canonicalised to.
     public func updateDefaultUnit(_ unit: MassUnit) {
         self.unit = unit
+    }
+
+    /// Replace the exercise library used to resolve spoken names. Read fresh
+    /// on each `hear(_:)` via `postProcess` + `parse`, so a swap between
+    /// utterances is consistent; entries already logged embed their
+    /// `Exercise` by value and are unaffected.
+    public func updateLibrary(_ library: ExerciseLibrary) {
+        self.library = library
     }
 
     /// Interprets one spoken utterance (recogniser n-best in) and applies each

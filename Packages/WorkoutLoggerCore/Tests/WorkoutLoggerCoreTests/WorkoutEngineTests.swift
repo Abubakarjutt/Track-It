@@ -823,6 +823,37 @@ struct WorkoutEngineTests {
 
         #expect(engine.workout?.entries.first?.sets.first?.loadKilograms == 100)
     }
+
+    @Test("updateLibrary makes a previously-unknown exercise resolvable on the next utterance")
+    func updateLibraryAddsResolvableExercise() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: .empty)
+        engine.startWorkout()
+        engine.hear(["incline dumbbell press"]) // unknown → no entry
+        #expect(engine.workout?.entries.isEmpty == true)
+
+        let incline = Exercise(name: "Incline Dumbbell Press", aliases: ["incline dumbbell press", "incline press"])
+        engine.updateLibrary(ExerciseLibrary([incline]))
+        engine.hear(["incline dumbbell press"])
+
+        #expect(engine.workout?.entries.map(\.exercise) == [incline])
+    }
+
+    @Test("updateLibrary leaves existing entries and personal records untouched")
+    func updateLibraryPreservesExistingWork() {
+        let bench = Exercise(name: "Barbell Bench Press", aliases: ["bench press"])
+        let engine = WorkoutEngine(store: InMemoryWorkoutStore(), library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench press"])
+        engine.hear(["100 for 5"])
+        let entriesBefore = engine.workout?.entries
+        let prCountBefore = engine.personalRecords.count
+
+        engine.updateLibrary(.empty)
+
+        #expect(engine.workout?.entries == entriesBefore)
+        #expect(engine.personalRecords.count == prCountBefore)
+    }
 }
 
 /// Test double for `WorkoutStore` — records every persisted revision in order.
