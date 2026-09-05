@@ -4,12 +4,14 @@ import WorkoutLoggerCore
 import WorkoutLoggerApp
 
 /// Composition root. `@MainActor` so `init()` may build the `@MainActor`
-/// `System*` adapters and the `@MainActor` `WorkoutSessionModel`.
+/// `System*` adapters and the `@MainActor` models.
 @main
 @MainActor
 struct TrackitApp: App {
     @State private var model: WorkoutSessionModel
     private let historyModel: WorkoutHistoryModel
+    private let settingsModel: SettingsModel
+    private let onboardingModel: OnboardingModel
     private let store: SwiftDataWorkoutStore
     private let historyUnavailable: Bool
 
@@ -18,15 +20,31 @@ struct TrackitApp: App {
         let availability = provisionStore(onDiskURL: storeURL)
         historyUnavailable = availability.isDegraded
 
-        let store = SwiftDataWorkoutStore(context: ModelContext(availability.container))
+        let context = ModelContext(availability.container)
+        let store = SwiftDataWorkoutStore(context: context)
         self.store = store
         self.historyModel = WorkoutHistoryModel(
             store: store, historyUnavailable: availability.isDegraded
         )
-        let library = ExerciseLibrary(TrackitApp.seedExercises)
+
+        // Exercise library: seed on first launch, then read the user-owned set.
+        // A degraded (in-memory) container isn't a trustworthy library, so fall
+        // back to the seed there so common lifts still resolve.
+        let libraryStore = SwiftDataExerciseLibraryStore(context: context)
+        libraryStore.seedIfEmpty(defaultExerciseSeed)
+        let library = ExerciseLibrary(
+            availability.isDegraded ? defaultExerciseSeed : libraryStore.all()
+        )
+
+        let settingsStore = UserDefaultsSettingsStore()
+        let speechAuth = SystemSpeechAuthorization()
+
         let history = availability.isDegraded ? [] : store.history()
         let knownBests = TrackitApp.knownBests(from: history)
-        let engine = WorkoutEngine(store: store, library: library, knownBests: knownBests)
+        let engine = WorkoutEngine(
+            store: store, library: library,
+            unit: settingsStore.defaultUnit, knownBests: knownBests
+        )
 
         let openWorkout = availability.isDegraded ? nil : store.openWorkout()
         var staleRecovery: StaleWorkoutRecovery?
@@ -43,22 +61,39 @@ struct TrackitApp: App {
             )
         }
 
-        _model = State(initialValue: WorkoutSessionModel(
+        let session = WorkoutSessionModel(
             engine: engine,
             transcriptSource: SystemSpeechRecognizer(),
             readbackVoice: SystemReadbackVoice(),
             haptics: SystemHaptics(),
             library: library,
+            unit: settingsStore.defaultUnit,
             knownBestExercises: Set(knownBests.keys),
             staleRecovery: staleRecovery,
             history: { store.history() }
-        ))
+        )
+        _model = State(initialValue: session)
+
+        self.settingsModel = SettingsModel(
+            settingsStore: settingsStore,
+            libraryStore: libraryStore,
+            speechAuthorization: speechAuth,
+            session: session,
+            historyModel: historyModel,
+            seed: defaultExerciseSeed
+        )
+        self.onboardingModel = OnboardingModel(
+            settingsStore: settingsStore, speechAuthorization: speechAuth
+        )
     }
 
     var body: some Scene {
         WindowGroup {
-            RootView(model: model, historyModel: historyModel, store: store,
-                     historyUnavailable: historyUnavailable)
+            RootView(
+                model: model, historyModel: historyModel, store: store,
+                historyUnavailable: historyUnavailable,
+                settingsModel: settingsModel, onboardingModel: onboardingModel
+            )
         }
     }
 
@@ -77,13 +112,4 @@ struct TrackitApp: App {
         }
         return best
     }
-
-    static let seedExercises: [Exercise] = [
-        Exercise(name: "Barbell Bench Press", aliases: ["bench", "bench press"]),
-        Exercise(name: "Barbell Back Squat", aliases: ["squat", "squats", "back squat"]),
-        Exercise(name: "Conventional Deadlift", aliases: ["deadlift", "deads"]),
-        Exercise(name: "Overhead Press", aliases: ["ohp", "overhead press", "press"]),
-        Exercise(name: "Barbell Row", aliases: ["row", "barbell row", "bent row"]),
-        Exercise(name: "Pull-Up", aliases: ["pull up", "pull ups", "pullups"]),
-    ]
 }

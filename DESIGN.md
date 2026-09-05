@@ -193,6 +193,18 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 ### Charts
 - **Style:** Swift Charts `LineMark` + `PointMark`, default system chart styling and default tint — no custom chart colors. Fixed 160pt height per series (Load, Volume, Estimated 1RM).
 
+### Onboarding (first run only)
+- **Style:** The `LaunchGateView` family — the black canvas, a single centered `VStack` (32pt spacing, 40pt padding), title (`.largeTitle.bold()`, Board White) over on-device / offline body copy (`Color.secondary`, centered). Shown once ever, gated by a one-way `hasCompletedOnboarding` latch ahead of the stale-workout gate in `RootView`.
+- **Action:** One `.borderedProminent` / `.controlSize(.large)` "Continue" button — matches `LaunchGateView`'s buttons, **not** the 96pt talk-button treatment. It fires the system speech + microphone prompts, then the screen dismisses regardless of the choice; a denial is recovered later from Settings, never by re-showing this screen.
+
+### Settings
+- **Style:** Stock grouped `Form`, no customization. Sections: **Units** (segmented `Picker`, kg/lb, applies live including mid-workout), **Speech** (status row — Granted / Denied / Not determined / Unavailable on this device — plus a conditional "Open iOS Settings" button shown for Denied only), **Exercises** (a `NavigationLink` row to the library, trailing count), **Data** (destructive-role "Delete All Workout Data", disabled while a workout is open with an explanatory footer, guarded by a `confirmationDialog`).
+- **Entry point:** A `gearshape` `ToolbarItem` on the HUD, the second app-authored HUD toolbar control after the set-list button. Both fall under the "logging-controls-only" exception to the 96pt rule.
+
+### Exercise Library / Exercise Editor
+- **Library:** Stock `List` — one row per exercise (name over a `·`-joined alias caption), a `plus` toolbar item to add, tap a row to edit, swipe to delete. A `safeAreaInset` footer notes that deleting an exercise leaves past workouts unchanged.
+- **Editor:** Stock `Form` — a name `TextField` and an editable alias list (`onDelete` + "Add alias"), with the same `.cancellationAction` / `.confirmationAction` toolbar pair as the Set Editor. Save is disabled for a blank name; a duplicate or empty name surfaces as inline `Error Red` footnote text.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -201,7 +213,7 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 - **Do** use SF Rounded display type only for the last-set line and the rest clock — the "Two Numbers Rule."
 - **Do** use monospaced digits for any text that's a formatted quantity (set lines, timers) so numbers don't jiggle when they update.
 - **Do** default to stock system List/Form/NavigationStack for every screen outside the HUD — that plainness is correct for post-workout review, not a placeholder waiting for polish.
-- **Do** size any new mid-workout *logging* control — one meant to be found and used without looking at the screen — at least as generously as the talk button (96pt). The one named exception is the HUD's toolbar set-list button: it's a VoiceOver/sighted-fallback entry point, not a hands-busy primary control, so it sits at the platform's standard toolbar size instead.
+- **Do** size any new mid-workout *logging* control — one meant to be found and used without looking at the screen — at least as generously as the talk button (96pt). The named exceptions are the HUD's toolbar buttons — the set-list button and the Settings gear: they're VoiceOver/sighted-fallback and between-workout entry points, not hands-busy primary controls, so they sit at the platform's standard toolbar size instead.
 
 ### Don't:
 - **Don't** add shadows, blur, or glassmorphism anywhere — depth comes from fill vs. stroke only.
