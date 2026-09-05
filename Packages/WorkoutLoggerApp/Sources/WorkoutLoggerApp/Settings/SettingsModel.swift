@@ -98,4 +98,20 @@ public final class SettingsModel {
     /// Whether to show the "Open iOS Settings" recovery row. Only `denied`
     /// is recoverable there; `unavailable` is a device/locale limitation.
     public var showsSpeechRecoveryRow: Bool { speechStatus == .denied }
+
+    // MARK: - Delete all workout data
+
+    /// False while a Workout is open — the destructive action is disabled
+    /// with an explanatory footer in that state.
+    public var canDeleteAllWorkoutData: Bool { !session.hasActiveWorkout }
+
+    /// Erase every stored Workout. The Exercise library and preferences are
+    /// separate stores and survive. No-op while a Workout is open. After the
+    /// wipe the session's personal-record celebration gate is re-derived from
+    /// the now-empty history.
+    public func deleteAllWorkoutData() {
+        guard canDeleteAllWorkoutData else { return }
+        historyModel.deleteAllWorkoutData()
+        session.refreshKnownBests()
+    }
 }

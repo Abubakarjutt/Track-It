@@ -144,4 +144,67 @@ struct SettingsModelTests {
             #expect(rig.settings.showsSpeechRecoveryRow == shows)
         }
     }
+
+    // A session wired to a real in-memory store, plus a SettingsModel over it.
+    private func makeDeleteRig(
+        script: [[String]], seededHistory: [Workout] = [], knownBestExercises: Set<String> = []
+    ) throws -> (SettingsModel, WorkoutSessionModel, SwiftDataWorkoutStore, WorkoutHistoryModel) {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self, ExerciseRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        for workout in seededHistory { store.save(workout) }
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        let session = WorkoutSessionModel(
+            engine: engine, transcriptSource: ScriptedTranscriptSource(script),
+            readbackVoice: SpyReadbackVoice(), haptics: SpyHaptics(),
+            library: ExerciseLibrary([bench]), knownBestExercises: knownBestExercises,
+            history: { store.history() }
+        )
+        let history = WorkoutHistoryModel(store: store)
+        let settings = SettingsModel(
+            settingsStore: InMemorySettingsStore(), libraryStore: InMemoryExerciseLibraryStore(),
+            speechAuthorization: FakeSpeechAuthorization(), session: session,
+            historyModel: history, seed: [bench]
+        )
+        return (settings, session, store, history)
+    }
+
+    @Test("delete-all is blocked while a workout is open")
+    func deleteBlockedMidWorkout() async throws {
+        let (settings, session, store, _) = try makeDeleteRig(
+            script: [["start workout"], ["bench"], ["100 for 5"]]
+        )
+        session.pressed(); await session.released() // start
+        session.pressed(); await session.released() // bench
+        session.pressed(); await session.released() // 100 for 5
+        #expect(settings.canDeleteAllWorkoutData == false)
+
+        settings.deleteAllWorkoutData() // no-op
+
+        #expect(store.history().isEmpty == false)
+    }
+
+    @Test("delete-all clears rows and the PR gate when no workout is open")
+    func deleteClearsWhenIdle() async throws {
+        let done = Workout(
+            entries: [Entry(exercise: Exercise(name: "Bench Press"), sets: [LoggedSet(
+                loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                loadKilograms: 140, reps: 3, durationSeconds: nil, distanceMeters: nil,
+                supersetRunID: nil, loggedAt: Date(timeIntervalSince1970: 10), note: nil)])],
+            startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 100)
+        )
+        let (settings, _, store, history) = try makeDeleteRig(
+            script: [], seededHistory: [done], knownBestExercises: ["Bench Press"]
+        )
+        #expect(history.rows.count == 1)
+        #expect(settings.canDeleteAllWorkoutData == true)
+
+        settings.deleteAllWorkoutData()
+
+        #expect(history.rows.isEmpty)
+        #expect(store.history().isEmpty)
+    }
 }
