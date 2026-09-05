@@ -19,6 +19,11 @@ struct HUDView: View {
     @State private var editingRow: EditRow?
     /// Drives the talk button's processing pulse — see `talkButton`.
     @State private var isPulsingDim = false
+    /// True for exactly as long as a finger (or VoiceOver's synthesized touch)
+    /// is down on the talk button — resets itself on release. Purely a touch
+    /// acknowledgment: independent of `isListening`, so it answers instantly,
+    /// with none of the model's async involved.
+    @GestureState private var isPressedDown = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Identifiable wrapper so `.sheet(item:)` can carry the tapped row index.
@@ -170,8 +175,18 @@ struct HUDView: View {
                     .opacity(hud.isProcessing && isPulsingDim ? 0.55 : 1)
             )
             .animation(.easeOut(duration: 0.15), value: talkButtonLabel)
+            // A real button gives you back a physical compression the instant
+            // you touch it — flat fill/color changes alone don't. This is
+            // that: it answers to the touch itself, not to isListening, so it
+            // never waits on the model.
+            .scaleEffect(isPressedDown ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.12), value: isPressedDown)
+            .sensoryFeedback(.impact(weight: .light), trigger: isPressedDown) { wasDown, isDown in
+                isDown && !wasDown
+            }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($isPressedDown) { _, state, _ in state = true }
                     .onChanged { _ in if !model.isListening { model.pressed() } }
                     .onEnded { _ in Task { await model.released() } }
             )

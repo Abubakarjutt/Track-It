@@ -168,6 +168,8 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 - **Shape:** 24pt corner radius, full width, 96pt tall (well over the 44pt touch-target minimum).
 - **Idle:** White fill (`#FFFFFF`), black `.title3.weight(.semibold)` label ("Hold to talk").
 - **Listening:** Fill switches to Go Green (`#30D158`), same black label, text changes to "Listening…". Driven by a `simultaneousGesture` press, not a tap — hold, don't tap.
+- **Processing:** Fill stays white (never a second accent), label reads "Working…", with a slow breathing opacity pulse while the released speech is still finalizing/parsing — off entirely under Reduce Motion, where the label change alone carries the state.
+- **Press:** The instant a touch (or VoiceOver's synthesized touch) registers — before `isListening` even flips — the button scales to 0.97 and a light impact haptic fires. Purely a touch acknowledgment, decoupled from listening/processing, so it never waits on the model.
 
 ### Rest Capsule (signature component)
 - **Character:** Blunt and confident, same as the talk button, at a smaller scale.
