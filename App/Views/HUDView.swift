@@ -76,7 +76,12 @@ struct HUDView: View {
     var body: some View {
         VStack(spacing: 28) {
             if historyUnavailable {
-                Text("History unavailable")
+                // Same secondary color as "vs last time" below it — this is a
+                // persistent, non-actionable degraded state, not something
+                // gone wrong that needs Error Red's alarm — but the icon
+                // gives it a shape distinct from routine copy, so a glance
+                // doesn't mistake one for the other.
+                Label("History unavailable", systemImage: "exclamationmark.triangle")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -157,15 +162,24 @@ struct HUDView: View {
 
     @ViewBuilder private var restCard: some View {
         if let restLine = hud.restLine {
-            Text(restLine)
-                .font(.system(size: displaySecondarySize, weight: .medium, design: .rounded))
-                .foregroundStyle(hud.restTargetReached ? Color.green : Color.secondary)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(hud.restTargetReached ? Color.green : Color.secondary.opacity(0.4), lineWidth: 2)
-                )
+            HStack(spacing: 8) {
+                Text(restLine)
+                    .font(.system(size: displaySecondarySize, weight: .medium, design: .rounded))
+                if hud.restTargetReached {
+                    // A shape, not just a color, says "reached" — green alone
+                    // is invisible to a colorblind glance.
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: displaySecondarySize * 0.5, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(hud.restTargetReached ? Color.green : Color.secondary)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(hud.restTargetReached ? Color.green : Color.secondary.opacity(0.4), lineWidth: 2)
+            )
         }
     }
 

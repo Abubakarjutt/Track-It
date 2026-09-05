@@ -73,6 +73,12 @@ struct SetEditView: View {
         }
         .navigationTitle("Edit set")
         .toolbar {
+            // Swipe-to-dismiss already discards unsaved edits, but ios.md
+            // calls for an explicit Cancel/Done pair — relying on the swipe
+            // alone leaves no on-screen affordance for it.
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save(); dismiss() }
             }

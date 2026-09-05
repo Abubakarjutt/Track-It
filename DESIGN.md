@@ -177,7 +177,7 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 - **Character:** Blunt and confident, same as the talk button, at a smaller scale.
 - **Shape:** 16pt corner radius, 24pt horizontal / 12pt vertical padding, 2pt stroke (no fill).
 - **Idle/counting:** White display-secondary text, `Color.secondary.opacity(0.4)` stroke.
-- **Target reached:** Text and stroke both switch to Go Green — the same accent, same meaning, as the listening talk button.
+- **Target reached:** Text and stroke both switch to Go Green — the same accent, same meaning, as the listening talk button — plus a trailing `checkmark.circle.fill`, so the state reads by shape too, not color alone.
 
 ### Lists (History, Set List, Progress)
 - **Style:** Stock system `List`, default styling, no custom row backgrounds or dividers.
@@ -187,6 +187,7 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 ### Forms (Set Editor)
 - **Style:** Stock system `Form`/`Section`, no customization — segmented `Picker` for set role, `Stepper` for reps, `Toggle` for dropset, destructive-role `Button` for delete.
 - **Save/confirm:** `.confirmationAction` toolbar placement (top-right "Save"), the system default location, never a custom footer button.
+- **Cancel:** `.cancellationAction` toolbar placement (top-left "Cancel"), paired with Save — swipe-to-dismiss also works, but the explicit button is the on-screen affordance ios.md calls for.
 
 ### Charts
 - **Style:** Swift Charts `LineMark` + `PointMark`, default system chart styling and default tint — no custom chart colors. Fixed 160pt height per series (Load, Volume, Estimated 1RM).
