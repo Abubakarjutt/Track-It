@@ -241,6 +241,23 @@ struct SettingsModelTests {
         #expect(empty.canExportHistory == false)
     }
 
+    @Test("refreshHistory re-reads the store so a just-finished workout is exportable")
+    func refreshHistoryPicksUpNewWorkouts() throws {
+        let (model, _, store, _) = try makeDeleteRig(script: [])
+        #expect(model.canExportHistory == false)
+
+        store.save(Workout(
+            entries: [Entry(exercise: Exercise(name: "Bench Press"), sets: [LoggedSet(
+                loadType: .external, effort: .reps, role: .working, grouping: .straight,
+                loadKilograms: 100, reps: 5, durationSeconds: nil, distanceMeters: nil,
+                supersetRunID: nil, loggedAt: Date(timeIntervalSince1970: 10), note: nil)])],
+            startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 3_600)
+        ))
+        model.refreshHistory()
+
+        #expect(model.canExportHistory)
+    }
+
     @Test("delete-all clears rows and the PR gate when no workout is open")
     func deleteClearsWhenIdle() async throws {
         let done = Workout(

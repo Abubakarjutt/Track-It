@@ -126,6 +126,12 @@ public final class SettingsModel {
 
     // MARK: - Export
 
+    /// Re-read the completed-workout list — call on Settings `.onAppear` so the
+    /// Export row reflects a workout finished since this model was built.
+    public func refreshHistory() {
+        historyModel.reload()
+    }
+
     /// False when there is nothing completed to back up — the Export row is
     /// disabled with an explanatory footer in that state (spec story 23).
     public var canExportHistory: Bool { !historyModel.rows.isEmpty }

@@ -4,12 +4,14 @@ import WorkoutLoggerCore
 import WorkoutLoggerApp
 
 /// Stock grouped form reached from the HUD's gear toolbar item: Units, Speech,
-/// Exercises, Data. Every control is a thin binding into `SettingsModel`.
+/// Exercises, Export, Data. Every control is a thin binding into `SettingsModel`.
 struct SettingsView: View {
     let model: SettingsModel
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var confirmingDelete = false
+    @State private var choosingExportFormat = false
+    @State private var shareURL: URL?
 
     var body: some View {
         Form {
@@ -52,6 +54,15 @@ struct SettingsView: View {
             }
 
             Section {
+                Button("Export Training History") { choosingExportFormat = true }
+                    .disabled(!model.canExportHistory)
+            } footer: {
+                Text(model.canExportHistory
+                     ? "Saves your full completed history as a file you can keep as a backup."
+                     : "Log and finish a workout first.")
+            }
+
+            Section {
                 Button("Delete All Workout Data", role: .destructive) {
                     confirmingDelete = true
                 }
@@ -63,7 +74,10 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
-        .onAppear { model.refreshSpeechStatus() }
+        .onAppear {
+            model.refreshSpeechStatus()
+            model.refreshHistory()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.refreshSpeechStatus() }
         }
@@ -73,6 +87,32 @@ struct SettingsView: View {
             Button("Delete", role: .destructive) { model.deleteAllWorkoutData() }
             Button("Cancel", role: .cancel) {}
         }
+        .confirmationDialog(
+            "Export format", isPresented: $choosingExportFormat, titleVisibility: .visible
+        ) {
+            Button("JSON — full backup") { presentExport(.json) }
+            Button("CSV — spreadsheet") { presentExport(.csv) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                ShareSheet(items: [shareURL])
+            }
+        }
+    }
+
+    /// Write the export to a temp file named as the builder suggests, then hand
+    /// that URL to the share sheet. A temp-write failure just leaves the sheet
+    /// unopened — nothing in the app depends on the export succeeding.
+    private func presentExport(_ format: ExportFormat) {
+        let document = model.exportDocument(format: format)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(document.suggestedFilename)
+        guard (try? document.data.write(to: url, options: .atomic)) != nil else { return }
+        shareURL = url
     }
 
     private var statusText: String {
