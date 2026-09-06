@@ -1,12 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" font-family="SF Pro Rounded, ui-rounded, -apple-system, system-ui, Helvetica, Arial, sans-serif">
-  <rect width="1280" height="360" fill="#000000"/>
+   <rect width="1280" height="360" fill="#000000"/>
 
-  <rect x="0" y="0" width="1280" height="4" fill="#30D158"/>
-
-  <g>
-    <text x="64" y="150" fill="#FFFFFF" font-size="96" font-weight="700" letter-spacing="-2">TRACKIT</text>
-    <circle cx="560" cy="110" r="11" fill="#30D158"/>
-    <text x="64" y="196" fill="#8A8A8A" font-size="26" font-weight="500" letter-spacing="6">LOG A SET BY SAYING IT</text>
+   <g>
+     <text x="64" y="150" fill="#FFFFFF" font-size="96" font-weight="700" letter-spacing="-2">TRACKIT</text>
+     <text x="64" y="196" fill="#8A8A8A" font-size="26" font-weight="500" letter-spacing="6">LOG A SET BY SAYING IT</text>
   </g>
 
   <g transform="translate(760,0)">

@@ -1,7 +1,7 @@
 # Trackit
 
 <p align="center">
-  <img src="assets/banner.svg" alt="Trackit — log a set by saying it" width="880"/>
+   <img src="assets/banner.png" alt="Trackit — log a set by saying it" width="880"/>
 </p>
 
 **Log a set by saying it.**
