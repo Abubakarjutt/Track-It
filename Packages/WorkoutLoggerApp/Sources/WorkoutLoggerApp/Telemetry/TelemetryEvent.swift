@@ -33,4 +33,7 @@ public enum TelemetryEvent: Equatable, Sendable {
     case parseFailed
     case correctionMade
     case featureUsed(TelemetryFeature)
+    /// The press-release → set-logged span for one utterance, rounded to the
+    /// nearest 100 ms. A single `Int` bucket — no timestamp, no workout content.
+    case setLoggedLatency(millisBucket: Int)
 }
