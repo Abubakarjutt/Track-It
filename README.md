@@ -174,7 +174,7 @@ green, in the cadence of the build log:
 | Onboarding & settings | ✅ Landed |
 | Export — JSON / CSV archive to the share sheet | ✅ Landed |
 | Apple Health sync — one-way write on workout end | ✅ Landed |
-| Telemetry & failed-utterance review | ⏳ Pending |
+| Telemetry & failed-utterance review | ✅ Landed |
 
 ---
 

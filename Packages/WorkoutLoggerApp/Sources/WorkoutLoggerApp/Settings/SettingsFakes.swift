@@ -5,16 +5,22 @@ public final class InMemorySettingsStore: SettingsStore {
     public var defaultUnit: MassUnit
     public var hasCompletedOnboarding: Bool
     public var syncsToAppleHealth: Bool
+    public var analyticsEnabled: Bool
+    public var recognitionReviewEnabled: Bool
 
     public init(
         defaultUnit: MassUnit = .kilograms,
         hasCompletedOnboarding: Bool = false,
-        syncsToAppleHealth: Bool = false
-     ) {
+        syncsToAppleHealth: Bool = false,
+        analyticsEnabled: Bool = false,
+        recognitionReviewEnabled: Bool = false
+      ) {
         self.defaultUnit = defaultUnit
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.syncsToAppleHealth = syncsToAppleHealth
-     }
+        self.analyticsEnabled = analyticsEnabled
+        self.recognitionReviewEnabled = recognitionReviewEnabled
+      }
 }
 
 /// Scriptable `SpeechAuthorization`: starts at `status`, and `request()`

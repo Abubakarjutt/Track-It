@@ -10,7 +10,9 @@ final class UserDefaultsSettingsStore: SettingsStore {
         static let unit = "defaultMassUnit"
         static let onboarded = "hasCompletedOnboarding"
         static let syncsToHealth = "syncsToAppleHealth"
-     }
+        static let analytics = "analyticsEnabled"
+        static let recognitionReview = "recognitionReviewEnabled"
+      }
     private let defaults = UserDefaults.standard
 
     var defaultUnit: MassUnit {
@@ -26,5 +28,15 @@ final class UserDefaultsSettingsStore: SettingsStore {
     var syncsToAppleHealth: Bool {
         get { defaults.bool(forKey: Key.syncsToHealth) }
         set { defaults.set(newValue, forKey: Key.syncsToHealth) }
-      }
+       }
+
+    var analyticsEnabled: Bool {
+        get { defaults.bool(forKey: Key.analytics) }
+        set { defaults.set(newValue, forKey: Key.analytics) }
+       }
+
+    var recognitionReviewEnabled: Bool {
+        get { defaults.bool(forKey: Key.recognitionReview) }
+        set { defaults.set(newValue, forKey: Key.recognitionReview) }
+       }
 }

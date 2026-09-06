@@ -24,3 +24,15 @@ public protocol HealthKitWorkoutStore: AnyObject {
     func request() async
     func write(_ workout: Workout, activeEnergyKilocalories: Double)
 }
+
+/// The default store: writes nothing and reports no HealthKit present. Used when
+/// Apple Health sync is not wired, so a `HealthKitSyncModel` can always exist
+/// without a dependency on the system store.
+@MainActor
+final class NoopHealthKitWorkoutStore: HealthKitWorkoutStore {
+    public init() {}
+    public var status: HealthKitSyncStatus { .unavailable }
+    public var lastWriteError: Error? { nil }
+    public func request() async {}
+    public func write(_ workout: Workout, activeEnergyKilocalories: Double) {}
+}

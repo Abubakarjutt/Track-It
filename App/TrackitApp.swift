@@ -64,7 +64,12 @@ struct TrackitApp: App {
         let healthSync = HealthKitSyncModel(
             store: SystemHealthKitWorkoutStore(),
             settings: settingsStore
-         )
+          )
+
+        let telemetry = TelemetryRecorder(sink: SystemTelemetrySink(), settings: settingsStore)
+        let failedUtterances = FailedUtteranceModel(
+            store: SystemFailedUtteranceStore(), settings: settingsStore
+          )
 
         let session = WorkoutSessionModel(
             engine: engine,
@@ -76,11 +81,13 @@ struct TrackitApp: App {
             knownBestExercises: Set(knownBests.keys),
             staleRecovery: staleRecovery,
             history: { store.history() },
-           onWorkoutEnded: { workout in
-               Task { @MainActor in await healthSync.workoutEnded(workout) }
-             }
+            onWorkoutEnded: { workout in
+                Task { @MainActor in await healthSync.workoutEnded(workout) }
+               },
+            onTelemetry: { telemetry.record($0) },
+            onUnresolvedUtterance: { failedUtterances.capture($0) }
            )
-         _model = State(initialValue: session)
+      _model = State(initialValue: session)
 
         self.settingsModel = SettingsModel(
             settingsStore: settingsStore,
@@ -88,8 +95,11 @@ struct TrackitApp: App {
             speechAuthorization: speechAuth,
             session: session,
             historyModel: historyModel,
-            seed: defaultExerciseSeed
-        )
+            seed: defaultExerciseSeed,
+            telemetry: telemetry,
+            failedUtterances: failedUtterances,
+            healthSync: healthSync
+            )
         self.onboardingModel = OnboardingModel(
             settingsStore: settingsStore, speechAuthorization: speechAuth
         )

@@ -75,8 +75,16 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let capReadbackAtEarcon: Bool
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var knownBestExercises: Set<String>
-    @ObservationIgnored private let history: () -> [Workout]
-    @ObservationIgnored private let onWorkoutEnded: (Workout) -> Void
+     @ObservationIgnored private let history: () -> [Workout]
+     @ObservationIgnored private let onWorkoutEnded: (Workout) -> Void
+      /// One anonymous analytics event per notable moment (start, end, set,
+      /// failure, correction). The composition root wires this to the
+      /// `TelemetryRecorder`, which drops every event when analytics is off.
+     @ObservationIgnored private let onTelemetry: (TelemetryEvent) -> Void
+      /// The transcript text of an utterance the parser could not place, routed
+      /// to the failed-utterance queue. The composition root wires this to the
+      /// `FailedUtteranceModel`, which enqueues only when its opt-in is on.
+     @ObservationIgnored private let onUnresolvedUtterance: (String) -> Void
 
     @ObservationIgnored private var announcedThisWorkout: Set<String> = []
     @ObservationIgnored private var lastTranscript = ""
@@ -95,8 +103,10 @@ public final class WorkoutSessionModel {
         knownBestExercises: Set<String> = [],
         staleRecovery: StaleWorkoutRecovery? = nil,
         history: @escaping () -> [Workout] = { [] },
-        onWorkoutEnded: @escaping (Workout) -> Void = { _ in }
-      ) {
+        onWorkoutEnded: @escaping (Workout) -> Void = { _ in },
+        onTelemetry: @escaping (TelemetryEvent) -> Void = { _ in },
+        onUnresolvedUtterance: @escaping (String) -> Void = { _ in }
+        ) {
         self.engine = engine
         self.transcriptSource = transcriptSource
         self.readbackVoice = readbackVoice
@@ -109,6 +119,8 @@ public final class WorkoutSessionModel {
         self.staleRecovery = staleRecovery
         self.history = history
         self.onWorkoutEnded = onWorkoutEnded
+        self.onTelemetry = onTelemetry
+        self.onUnresolvedUtterance = onUnresolvedUtterance
         syncFromEngine()
         seedAnnouncedFromCurrentWorkout()
     }
@@ -263,8 +275,13 @@ public final class WorkoutSessionModel {
         lastTranscript = transcript
         let results = parse(transcript, context: WorkoutContext(unit: unit), library: library)
 
-        if results.contains(where: { isStartWorkout($0) }) {
+        let startedThisUtterance = results.contains(where: { isStartWorkout($0) })
+        let madeACorrection = results.contains(where: { isUndo($0) })
+        let unresolved = results.contains(where: { isLowConfidence($0) })
+
+        if startedThisUtterance {
             announcedThisWorkout = []
+            onTelemetry(.workoutStarted)
         }
 
         let setsBefore = totalSetCount(workout)
@@ -276,12 +293,28 @@ public final class WorkoutSessionModel {
         updateActiveExercise(from: results)
 
         if workoutBefore?.isEnded == false, workout?.isEnded == true {
+            let ended = workout!
             knownBestExercises = Self.exercisesWithLoadedWorkingSet(in: history())
-            onWorkoutEnded(workout!)
-          }
+            onWorkoutEnded(ended)
+            onTelemetry(WorkoutSessionModel.completedEvent(for: ended))
+         }
 
         let setsAfter = totalSetCount(workout)
         let loggedASet = setsAfter > setsBefore
+        if loggedASet {
+            onTelemetry(.setLogged)
+        }
+
+        if madeACorrection {
+            onTelemetry(.correctionMade)
+        }
+
+        if unresolved {
+            onTelemetry(.parseFailed)
+             // Only the transcript text leaves the loop, and only the
+             // FailedUtteranceModel decides whether it is enqueued (its opt-in).
+            onUnresolvedUtterance(transcript)
+        }
 
         let genuinePR = engine.personalRecords
             .dropFirst(prBefore)
@@ -293,12 +326,24 @@ public final class WorkoutSessionModel {
 
         if loggedASet {
             restReachedFired = false
-            // A new set restarts rest; `restStartedAt` re-syncs from the engine
-            // but `restElapsed` is only recomputed in `tick()`, so zero it now
-            // rather than show the previous period's value for up to a second.
+             // A new set restarts rest; `restStartedAt` re-syncs from the engine
+             // but `restElapsed` is only recomputed in `tick()`, so zero it now
+             // rather than show the previous period's value for up to a second.
             restElapsed = 0
-        }
-    }
+         }
+     }
+
+     /// The content-free `workoutCompleted` event: only the total and working-set
+     /// counts and a coarse duration bucket — no times, no loads, no names.
+     static func completedEvent(for workout: Workout) -> TelemetryEvent {
+        let total = totalSetCountOf(workout)
+        let working = workingSetCount(of: workout)
+        return .workoutCompleted(
+            totalSetCount: total,
+            workingSetCount: working,
+            duration: TelemetryRecorder.durationBucket(of: workout)
+        )
+     }
 
     private func fireHaptic(results: [ParseResult], loggedASet: Bool, firePersonalRecord: Bool) {
         if loggedASet {
@@ -465,7 +510,24 @@ public final class WorkoutSessionModel {
 
     private func totalSetCount(_ workout: Workout?) -> Int {
         workout?.entries.reduce(0) { $0 + $1.sets.count } ?? 0
-    }
+     }
+
+       /// Total sets across a non-optional workout — the `workoutCompleted`
+       /// telemetry count.
+    static func totalSetCountOf(_ workout: Workout) -> Int {
+        workout.entries.reduce(0) { $0 + $1.sets.count }
+       }
+
+       /// The count of working (non-warmup) sets — the `workoutCompleted`
+       /// telemetry's `workingSetCount`.
+    static func workingSetCount(of workout: Workout) -> Int {
+        workout.entries.reduce(0) { partial, entry in
+            partial + entry.sets.filter { $0.role == .working }.count
+          }
+       }
+
+
+
 
     private func salientResult(_ results: [ParseResult]) -> ParseResult? {
         results.first { isSet($0) }
@@ -503,5 +565,8 @@ public final class WorkoutSessionModel {
     private func isLowConfidence(_ r: ParseResult) -> Bool { if case .lowConfidence = r { return true }; return false }
     private func isStartWorkout(_ r: ParseResult) -> Bool {
         if case .command(.startWorkout) = r { return true }; return false
-    }
+     }
+     private func isUndo(_ r: ParseResult) -> Bool {
+        if case .command(.undo) = r { return true }; return false
+     }
 }

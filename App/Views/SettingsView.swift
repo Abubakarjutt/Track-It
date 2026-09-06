@@ -53,34 +53,93 @@ struct SettingsView: View {
                 }
             }
 
-            Section {
-                Button("Export Training History") { choosingExportFormat = true }
-                    .disabled(!model.canExportHistory)
-            } footer: {
+              Section {
+                  Button("Export Training History") { choosingExportFormat = true }
+                        .disabled(!model.canExportHistory)
+                } footer: {
                 Text(model.canExportHistory
-                     ? "Saves your full completed history as a file you can keep as a backup."
-                     : "Log and finish a workout first.")
-            }
+                        ? "Saves your full completed history as a file you can keep as a backup."
+                        : "Log and finish a workout first.")
+               }
 
-            Section {
-                Button("Delete All Workout Data", role: .destructive) {
-                    confirmingDelete = true
-                }
-                .disabled(!model.canDeleteAllWorkoutData)
-            } footer: {
-                Text(model.canDeleteAllWorkoutData
-                     ? "Deletes every logged workout. Your exercise library and preferences are kept."
-                     : "Finish your current workout first.")
-            }
-        }
-        .navigationTitle("Settings")
-        .onAppear {
-            model.refreshSpeechStatus()
-            model.refreshHistory()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.refreshSpeechStatus() }
-        }
+             Section("Apple Health") {
+                  HStack {
+                      Text("Write workouts to Apple Health")
+                      Spacer()
+                      Toggle("", isOn: Binding(
+                          get: { model.healthSyncEnabled },
+                          set: { Task { await model.setHealthSyncEnabled($0) } }
+                           ))
+                           .labelsHidden()
+                      }
+                  if model.showsHealthRecoveryRow {
+                      HStack {
+                          Text(healthStatusText).foregroundStyle(.secondary)
+                          Spacer()
+                          Button("Open iOS Settings") {
+                              if let url = URL(string: UIApplication.openSettingsURLString) {
+                                  UIApplication.shared.open(url)
+                                   }
+                          }
+                      }
+                   }
+                  } footer: {
+                  Text("Each finished workout is written once with a rough energy "
+                          + "estimate. trackit writes to Health and never reads from it.")
+                  }
+
+            Section("Privacy") {
+                  Toggle("Share anonymous analytics", isOn: Binding(
+                      get: { model.analyticsEnabled },
+                      set: { model.setAnalyticsEnabled($0) }
+                      ))
+                  Toggle("Help improve recognition", isOn: Binding(
+                      get: { model.recognitionReviewEnabled },
+                      set: { model.setRecognitionReviewEnabled($0) }
+                      ))
+                  if model.hasQueuedPhrases {
+                      NavigationLink {
+                          RecognitionReviewView(model: model)
+                          } label: {
+                           HStack {
+                              Text("Review \(model.queuedPhraseCount) phrase\(model.queuedPhraseCount == 1 ? "" : "s")")
+                              Spacer()
+                              Text("tap to submit or discard").foregroundStyle(.secondary)
+                           }
+                          }
+                        }
+                      } footer: {
+                       Text("Anonymous analytics send coarse usage only — never a "
+                              + "load, an exercise name, a transcript, or workout "
+                              + "content. A failed set can be queued for recognition "
+                              + "improvement; nothing is sent unless you submit it here.")
+                      }
+
+                   Section {
+                       Button("Delete All Workout Data", role: .destructive) {
+                           confirmingDelete = true
+                          }
+                          .disabled(!model.canDeleteAllWorkoutData)
+                       } footer: {
+                        Text(model.canDeleteAllWorkoutData
+                               ? "Deletes every logged workout. Your exercise library and preferences are kept."
+                                : "Finish your current workout first.")
+                        }
+                     }
+            .navigationTitle("Settings")
+            .onAppear {
+              model.recordSettingsOpened()
+              model.refreshSpeechStatus()
+              model.refreshHealthStatus()
+              model.refreshHistory()
+              model.refreshRecognitionReview()
+              }
+          .onChange(of: scenePhase) { _, phase in
+             if phase == .active {
+                model.refreshSpeechStatus()
+                model.refreshHealthStatus()
+             }
+          }
         .confirmationDialog(
             "Delete all workout data?", isPresented: $confirmingDelete, titleVisibility: .visible
         ) {
@@ -115,12 +174,21 @@ struct SettingsView: View {
         shareURL = url
     }
 
-    private var statusText: String {
+     private var statusText: String {
         switch model.speechStatus {
         case .granted: return "Granted"
         case .denied: return "Denied"
         case .notDetermined: return "Not determined"
         case .unavailable: return "Unavailable on this device"
-        }
-    }
-}
+         }
+       }
+
+       private var healthStatusText: String {
+        switch model.healthSyncStatus {
+        case .authorized: return "Granted"
+        case .denied: return "Denied"
+        case .notDetermined: return "Not determined"
+        case .unavailable: return "Unavailable on this device"
+         }
+       }
+ }
