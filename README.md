@@ -2,25 +2,17 @@
 
 **Log a set by saying it.**
 
-Trackit is a voice-first iOS workout logger. Press to talk, name the exercise
-once, and say each set as you finish it — *"225 for 5"* — and it is logged,
-read back, and confirmed with a haptic. No unlocking, no form to tap between
-sets, no signal required. Recognition and parsing run entirely on-device, so
-the loop works in a loud, signal-free gym — that is a standing product
-commitment, not a v1 shortcut.
+A voice-first iOS workout logger. Press to talk, name the exercise once, and say
+each set as you finish it — *"225 for 5"* — and it is logged, read back, and
+confirmed with a haptic. No unlocking, no form to tap between sets, no signal
+required. Recognition and parsing run entirely on-device, so the loop works in a
+loud, signal-free gym — a standing product commitment, not a v1 shortcut.
 
-| | |
-| --- | --- |
-| **Platform** | iOS 17+ · SwiftUI · SwiftData |
-| **Language** | Swift 6.0 |
-| **Voice** | On-device recognition — fully offline |
-| **Status** | Pre-launch |
-
-![Platform](https://img.shields.io/badge/platform-iOS_17%2B-000000?style=flat-square)
-![Swift](https://img.shields.io/badge/Swift-6.0-000000?style=flat-square&logo=swift&logoColor=white)
-![Stack](https://img.shields.io/badge/stack-SwiftUI_%2B_SwiftData-000000?style=flat-square)
-![Speech](https://img.shields.io/badge/speech-on--device%2C_offline-30D158?style=flat-square)
-![Status](https://img.shields.io/badge/status-pre--launch-lightgrey?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-iOS_17%2B-0a0a0a?style=flat&logo=apple&logoColor=white)
+![Swift](https://img.shields.io/badge/Swift-6.0-0a0a0a?style=flat&logo=swift&logoColor=white)
+![Stack](https://img.shields.io/badge/stack-SwiftUI_%2B_SwiftData-0a0a0a?style=flat)
+![On-device](https://img.shields.io/badge/on--device-offline-30D158?style=flat&logoColor=black)
+![Status](https://img.shields.io/badge/status-pre--launch-9a9a9a?style=flat)
 
 ---
 
@@ -32,23 +24,23 @@ looking at a screen. The app confirms every set *peripherally*, without pulling
 your eyes back to a display:
 
 ```
- you    ›  "start workout"
- app    ›  ♪                              tone
+  you   ›  "start workout"
+  app   ›  ♪                            tone
 
- you    ›  "bench press"
- app    ›  🔊 "Bench Press."               full, first time this exercise comes up
+  you   ›  "bench press"
+  app   ›  🔊 "Bench Press."            full, first time this exercise comes up
 
- you    ›  "warmup 60 for 10"
- app    ›  🔊 "60 for 10"                  terse from here on, same exercise
+  you   ›  "warmup 60 for 10"
+  app   ›  🔊 "60 for 10"              terse from here on, same exercise
 
- you    ›  "225 for 5"
- app    ›  🔊 "225 for 5"   📳            logged; rest clock starts
+  you   ›  "225 for 5"
+  app   ›  🔊 "225 for 5"  📳         logged; rest clock starts
 
- you    ›  "225 for 5"                     said again, hands still full
- app    ›  🔊 "225 for 5"   📳            logged again
+  you   ›  "225 for 5"                 said again, hands still full
+  app   ›  🔊 "225 for 5"  📳         logged again
 
- you    ›  "undo"
- app    ›  ♪                              last set removed — no need to look up
+  you   ›  "undo"
+  app   ›  ♪                            last set removed — no need to look up
 ```
 
 One accent color carries one meaning: **Go Green means "go / on-target."** A
@@ -90,15 +82,15 @@ SwiftUI:
 ```
 Packages/
 ├── WorkoutLoggerCore/        pure domain logic — no I/O, no SwiftUI
-│   ├── Model, WorkoutEngine, WorkoutEditing, WorkoutTemplate
-│   ├── Parser, PostProcessor, Resolver     transcript → structured intent
-│   ├── Readback, ExerciseProgress, CorpusScore
-│   └── CONTEXT.md                          the domain glossary
+│    ├── Model, WorkoutEngine, WorkoutEditing, WorkoutTemplate
+│    ├── Parser, PostProcessor, Resolver      transcript → structured intent
+│    ├── Readback, ExerciseProgress, CorpusScore
+│    └── CONTEXT.md                          the domain glossary
 │
 └── WorkoutLoggerApp/         @Observable app layer over the core
-    ├── Session/              WorkoutSessionModel — the live-workout state machine
-    ├── HUD/                  HUDProjection — the pure view-model the HUD renders
-    └── History/, Progress/, Persistence/, Readback/, Formatting/
+     ├── Session/              WorkoutSessionModel — the live-workout state machine
+     ├── HUD/                  HUDProjection — the pure view-model the HUD renders
+     └── History/, Progress/, Persistence/, Readback/, Formatting/
 
 App/                          SwiftUI shell — dumb renderers over the above
 ├── Views/                    HUDView, HistoryListView, ExerciseProgressView, …
@@ -151,8 +143,8 @@ cd trackit
 **Core logic and the app layer** — pure Swift, no Xcode required:
 
 ```bash
-(cd Packages/WorkoutLoggerCore && swift test)   # parser, engine, editing, progress
-(cd Packages/WorkoutLoggerApp    && swift test)  # session model, HUD, history, progress, HealthKit
+(cd Packages/WorkoutLoggerCore && swift test)    # parser, engine, editing, progress
+(cd Packages/WorkoutLoggerApp     && swift test) # session model, HUD, history, progress, HealthKit
 ```
 
 **The app itself** is generated with [XcodeGen](https://github.com/yonaskolb/XcodeGen)
