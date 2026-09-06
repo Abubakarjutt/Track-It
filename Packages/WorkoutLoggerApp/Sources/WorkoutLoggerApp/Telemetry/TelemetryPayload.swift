@@ -3,7 +3,7 @@ import Foundation
 /// The exact JSON body posted to the analytics endpoint: a content-free
 /// install id plus a batch of event objects. `installID` is a random UUID
 /// with no tie to the device, the user, or any workout.
-public struct TelemetryPayload: Codable, Equatable {
+public struct TelemetryPayload: Codable, Equatable, Sendable {
     public let installID: String
     public let events: [TelemetryEventPayload]
 
@@ -21,7 +21,7 @@ public struct TelemetryPayload: Codable, Equatable {
 /// One event on the wire. Every field is a coarse fact — a kind string, a
 /// count, a fixed bucket/feature spelling. There is no field that can hold a
 /// load, an exercise name, or a transcript. `nil` fields are omitted.
-public struct TelemetryEventPayload: Codable, Equatable {
+public struct TelemetryEventPayload: Codable, Equatable, Sendable {
     public var kind: String
     public var totalSets: Int?
     public var workingSets: Int?
