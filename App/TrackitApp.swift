@@ -46,7 +46,7 @@ struct TrackitApp: App {
             unit: settingsStore.defaultUnit, knownBests: knownBests
         )
 
-        let openWorkout = availability.isDegraded ? nil : store.openWorkout()
+         let openWorkout = availability.isDegraded ? nil : store.openWorkout()
         var staleRecovery: StaleWorkoutRecovery?
         switch launchDecision(openWorkout: openWorkout, now: Date()) {
         case .fresh:
@@ -58,8 +58,13 @@ struct TrackitApp: App {
                 workout: workout,
                 onResume: { engine.resume(workout) },
                 onDiscard: { closeAbandonedWorkout(workout, in: store) }
-            )
-        }
+             )
+          }
+
+        let healthSync = HealthKitSyncModel(
+            store: SystemHealthKitWorkoutStore(),
+            settings: settingsStore
+         )
 
         let session = WorkoutSessionModel(
             engine: engine,
@@ -70,9 +75,12 @@ struct TrackitApp: App {
             unit: settingsStore.defaultUnit,
             knownBestExercises: Set(knownBests.keys),
             staleRecovery: staleRecovery,
-            history: { store.history() }
-        )
-        _model = State(initialValue: session)
+            history: { store.history() },
+           onWorkoutEnded: { workout in
+               Task { @MainActor in await healthSync.workoutEnded(workout) }
+             }
+           )
+         _model = State(initialValue: session)
 
         self.settingsModel = SettingsModel(
             settingsStore: settingsStore,

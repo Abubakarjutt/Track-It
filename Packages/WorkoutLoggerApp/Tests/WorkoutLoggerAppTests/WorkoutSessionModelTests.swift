@@ -17,7 +17,15 @@ struct WorkoutSessionModelTests {
         let source: ScriptedTranscriptSource
         let voice: SpyReadbackVoice
         let haptics: SpyHaptics
-    }
+        let endedWorkouts: EndedWorkoutSink
+       }
+
+    /// Box so the `onWorkoutEnded` `@Sendable`-tainted closure can record fired
+    /// workouts without capturing a mutable local (Swift 6 concurrency).
+     final class EndedWorkoutSink: @unchecked Sendable {
+        private(set) var fired: [Workout] = []
+        func add(_ w: Workout) { fired.append(w) }
+       }
 
     private func makeRig(
         script: [[String]],
@@ -27,27 +35,29 @@ struct WorkoutSessionModelTests {
         unit: MassUnit = .kilograms,
         history: @escaping () -> [Workout] = { [] },
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
-    ) throws -> Rig {
+     ) throws -> Rig {
         let container = try ModelContainer(
             for: WorkoutRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+         )
         let store = SwiftDataWorkoutStore(context: ModelContext(container))
         let engine = WorkoutEngine(
             store: store, library: Self.library, unit: unit, knownBests: knownBests, now: now
-        )
+         )
         let source = ScriptedTranscriptSource(script)
         let voice = SpyReadbackVoice()
         let haptics = SpyHaptics()
+        let ended = EndedWorkoutSink()
         let model = WorkoutSessionModel(
             engine: engine, transcriptSource: source, readbackVoice: voice,
             haptics: haptics, library: Self.library, unit: unit,
             capReadbackAtEarcon: capAtEarcon, now: now,
             knownBestExercises: knownBestExercises ?? Set(knownBests.keys),
-            history: history
-        )
-        return Rig(model: model, source: source, voice: voice, haptics: haptics)
-    }
+            history: history,
+            onWorkoutEnded: { ended.add($0) }
+         )
+        return Rig(model: model, source: source, voice: voice, haptics: haptics, endedWorkouts: ended)
+       }
 
     private func say(_ rig: Rig) async {
         rig.model.pressed()
@@ -707,15 +717,39 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.workout?.entries == entries)
     }
 
-    @Test("hasActiveWorkout tracks the open-workout lifecycle")
-    func hasActiveWorkoutLifecycle() async throws {
+     @Test("hasActiveWorkout tracks the open-workout lifecycle")
+     func hasActiveWorkoutLifecycle() async throws {
         let rig = try makeRig(script: [["start workout"], ["end workout"]])
-        #expect(rig.model.hasActiveWorkout == false)
+         #expect(rig.model.hasActiveWorkout == false)
         await say(rig) // start
-        #expect(rig.model.hasActiveWorkout == true)
+         #expect(rig.model.hasActiveWorkout == true)
         await say(rig) // end
-        #expect(rig.model.hasActiveWorkout == false)
-    }
+         #expect(rig.model.hasActiveWorkout == false)
+        }
+
+     @Test("onWorkoutEnded fires once with the completed workout on the end transition")
+     func onWorkoutEndedFiresOnEndTransition() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"], ["end workout"]])
+         #expect(rig.endedWorkouts.fired.isEmpty)
+
+        await say(rig) // start
+         #expect(rig.endedWorkouts.fired.isEmpty) // starting is not ending
+
+        await say(rig) // log a set mid-workout — no end
+         #expect(rig.endedWorkouts.fired.isEmpty) // a mid-workout edit is not an end
+
+        await say(rig) // end
+         #expect(rig.endedWorkouts.fired.count == 1)
+         #expect(rig.endedWorkouts.fired.first?.isEnded == true)
+        }
+
+     @Test("onWorkoutEnded does not fire when nothing is a completed workout")
+     func onWorkoutEndedSilentWithoutEnd() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"]])
+        await say(rig) // start
+        await say(rig) // log a set, no end
+         #expect(rig.endedWorkouts.fired.isEmpty)
+        }
 
     @Test("updateDefaultUnit publishes an observation change for displayUnit")
     func updateDefaultUnitIsObservable() throws {

@@ -6,18 +6,21 @@ import WorkoutLoggerCore
 @MainActor
 struct SettingsFakesTests {
 
-    @Test("InMemorySettingsStore round-trips both values")
+     @Test("InMemorySettingsStore round-trips its values")
     func settingsStoreRoundTrip() {
         let store = InMemorySettingsStore()
         #expect(store.defaultUnit == .kilograms)
         #expect(store.hasCompletedOnboarding == false)
+        #expect(store.syncsToAppleHealth == false)
 
         store.defaultUnit = .pounds
         store.hasCompletedOnboarding = true
+        store.syncsToAppleHealth = true
 
         #expect(store.defaultUnit == .pounds)
         #expect(store.hasCompletedOnboarding == true)
-    }
+        #expect(store.syncsToAppleHealth == true)
+      }
 
     @Test("FakeSpeechAuthorization reports its status and transitions on request()")
     func speechAuthFake() async {
