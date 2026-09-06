@@ -204,6 +204,7 @@ public final class WorkoutSessionModel {
 
     public func released() async {
         isListening = false
+        let releasedAt = now()
         // A depth counter, not a flag: a quick press-release-press-release
         // (plausible when a lifter thinks the first one didn't take) starts
         // a second released() while the first is still awaiting its
@@ -227,7 +228,11 @@ public final class WorkoutSessionModel {
             readbackVoice.perform(.earcon)
             return
         }
-        apply(hypotheses)
+        let loggedASet = apply(hypotheses)
+        if loggedASet {
+            let millis = LatencyMetric.bucketMillis(now().timeIntervalSince(releasedAt))
+            onTelemetry(.setLoggedLatency(millisBucket: millis))
+        }
     }
 
     public func resolveTapSelect(_ exercise: Exercise) {
@@ -270,7 +275,8 @@ public final class WorkoutSessionModel {
 
     // MARK: - Applying an utterance
 
-    private func apply(_ hypotheses: [String]) {
+    @discardableResult
+    private func apply(_ hypotheses: [String]) -> Bool {
         let transcript = postProcess(hypotheses, library: library)
         lastTranscript = transcript
         let results = parse(transcript, context: WorkoutContext(unit: unit), library: library)
@@ -331,6 +337,7 @@ public final class WorkoutSessionModel {
              // rather than show the previous period's value for up to a second.
             restElapsed = 0
          }
+        return loggedASet
      }
 
      /// The content-free `workoutCompleted` event: only the total and working-set

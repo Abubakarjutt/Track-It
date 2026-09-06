@@ -128,4 +128,94 @@ struct WorkoutSessionTelemetryHookTests {
             if case .workoutCompleted = $0 { return true }; return false
           } == false)
        }
+
+    /// A mutable clock the fake transcript source advances mid-utterance, so a
+    /// test can put real elapsed time between press-release and set-logged.
+    final class ClockBox: @unchecked Sendable {
+        var date: Date
+        init(_ date: Date) { self.date = date }
+    }
+
+    /// Advances `clock` by `step` seconds inside `endUtterance()` — modelling
+    /// the recogniser + parse time the latency span is meant to capture.
+    final class DelayingTranscriptSource: TranscriptSource {
+        private var scripts: [[String]]
+        private let clock: ClockBox
+        private let step: TimeInterval
+        init(_ scripts: [[String]], clock: ClockBox, step: TimeInterval) {
+            self.scripts = scripts; self.clock = clock; self.step = step
+        }
+        func beginUtterance() {}
+        func endUtterance() async throws -> [String] {
+            clock.date = clock.date.addingTimeInterval(step)
+            return scripts.isEmpty ? [] : scripts.removeFirst()
+        }
+    }
+
+    private func makeDelayingRig(
+        script: [[String]], clock: ClockBox, step: TimeInterval
+    ) throws -> Rig {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(
+            store: store, library: Self.library, unit: .kilograms, now: { clock.date }
+        )
+        let events = EventBox()
+        let unresolved = TranscriptBox()
+        let model = WorkoutSessionModel(
+            engine: engine,
+            transcriptSource: DelayingTranscriptSource(script, clock: clock, step: step),
+            readbackVoice: SpyReadbackVoice(),
+            haptics: SpyHaptics(),
+            library: Self.library,
+            now: { clock.date },
+            history: { store.history() },
+            onTelemetry: { events.add($0) },
+            onUnresolvedUtterance: { unresolved.add($0) }
+        )
+        return Rig(model: model, events: events, unresolved: unresolved)
+    }
+
+    @Test("a logged set emits one setLoggedLatency bucket for the press→logged span")
+    func loggedSetEmitsLatency() async throws {
+        let clock = ClockBox(Date(timeIntervalSince1970: 0))
+        let rig = try makeDelayingRig(
+            script: [["start workout"], ["bench 100 for 5"]], clock: clock, step: 0.4
+        )
+        await say(rig)  // start workout — logs no set
+        await say(rig)  // bench 100 for 5 — logs a set, ~0.4 s elapsed
+
+        let latencies = rig.events.events.compactMap { event -> Int? in
+            if case let .setLoggedLatency(bucket) = event { return bucket }
+            return nil
+        }
+        #expect(latencies == [400])
+    }
+
+    @Test("an utterance that logs nothing emits no latency event")
+    func noSetNoLatency() async throws {
+        let clock = ClockBox(Date(timeIntervalSince1970: 0))
+        let rig = try makeDelayingRig(script: [["flurbo"]], clock: clock, step: 0.4)
+        await say(rig)
+        #expect(rig.events.events.contains {
+            if case .setLoggedLatency = $0 { return true }; return false
+        } == false)
+    }
+
+    @Test("setLogged still fires exactly once per set alongside the latency event")
+    func setLoggedUnaffected() async throws {
+        let clock = ClockBox(Date(timeIntervalSince1970: 0))
+        let rig = try makeDelayingRig(
+            script: [["start workout"], ["bench 100 for 5"], ["bench 110 for 5"]],
+            clock: clock, step: 0.2
+        )
+        for _ in 0..<3 { await say(rig) }
+        #expect(rig.events.events.filter { $0 == .setLogged }.count == 2)
+        #expect(rig.events.events.filter {
+            if case .setLoggedLatency = $0 { return true }; return false
+        }.count == 2)
+    }
 }
