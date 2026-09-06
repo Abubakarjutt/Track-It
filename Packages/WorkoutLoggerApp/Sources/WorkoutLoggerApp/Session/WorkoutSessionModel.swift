@@ -76,6 +76,7 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var knownBestExercises: Set<String>
     @ObservationIgnored private let history: () -> [Workout]
+    @ObservationIgnored private let onWorkoutEnded: (Workout) -> Void
 
     @ObservationIgnored private var announcedThisWorkout: Set<String> = []
     @ObservationIgnored private var lastTranscript = ""
@@ -93,8 +94,9 @@ public final class WorkoutSessionModel {
         now: @escaping () -> Date = Date.init,
         knownBestExercises: Set<String> = [],
         staleRecovery: StaleWorkoutRecovery? = nil,
-        history: @escaping () -> [Workout] = { [] }
-    ) {
+        history: @escaping () -> [Workout] = { [] },
+        onWorkoutEnded: @escaping (Workout) -> Void = { _ in }
+      ) {
         self.engine = engine
         self.transcriptSource = transcriptSource
         self.readbackVoice = readbackVoice
@@ -106,6 +108,7 @@ public final class WorkoutSessionModel {
         self.knownBestExercises = knownBestExercises
         self.staleRecovery = staleRecovery
         self.history = history
+        self.onWorkoutEnded = onWorkoutEnded
         syncFromEngine()
         seedAnnouncedFromCurrentWorkout()
     }
@@ -274,7 +277,8 @@ public final class WorkoutSessionModel {
 
         if workoutBefore?.isEnded == false, workout?.isEnded == true {
             knownBestExercises = Self.exercisesWithLoadedWorkingSet(in: history())
-        }
+            onWorkoutEnded(workout!)
+          }
 
         let setsAfter = totalSetCount(workout)
         let loggedASet = setsAfter > setsBefore

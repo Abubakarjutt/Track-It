@@ -9,7 +9,8 @@ final class UserDefaultsSettingsStore: SettingsStore {
     private enum Key {
         static let unit = "defaultMassUnit"
         static let onboarded = "hasCompletedOnboarding"
-    }
+        static let syncsToHealth = "syncsToAppleHealth"
+     }
     private let defaults = UserDefaults.standard
 
     var defaultUnit: MassUnit {
@@ -20,5 +21,10 @@ final class UserDefaultsSettingsStore: SettingsStore {
     var hasCompletedOnboarding: Bool {
         get { defaults.bool(forKey: Key.onboarded) }
         set { defaults.set(newValue, forKey: Key.onboarded) }
-    }
+      }
+
+    var syncsToAppleHealth: Bool {
+        get { defaults.bool(forKey: Key.syncsToHealth) }
+        set { defaults.set(newValue, forKey: Key.syncsToHealth) }
+      }
 }

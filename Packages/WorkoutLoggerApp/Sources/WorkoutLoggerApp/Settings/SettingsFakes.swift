@@ -4,11 +4,17 @@ import WorkoutLoggerCore
 public final class InMemorySettingsStore: SettingsStore {
     public var defaultUnit: MassUnit
     public var hasCompletedOnboarding: Bool
+    public var syncsToAppleHealth: Bool
 
-    public init(defaultUnit: MassUnit = .kilograms, hasCompletedOnboarding: Bool = false) {
+    public init(
+        defaultUnit: MassUnit = .kilograms,
+        hasCompletedOnboarding: Bool = false,
+        syncsToAppleHealth: Bool = false
+     ) {
         self.defaultUnit = defaultUnit
         self.hasCompletedOnboarding = hasCompletedOnboarding
-    }
+        self.syncsToAppleHealth = syncsToAppleHealth
+     }
 }
 
 /// Scriptable `SpeechAuthorization`: starts at `status`, and `request()`

@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 import WorkoutLoggerCore
 
@@ -121,5 +122,24 @@ public final class SettingsModel {
         guard canDeleteAllWorkoutData else { return }
         historyModel.deleteAllWorkoutData()
         session.refreshKnownBests()
+    }
+
+    // MARK: - Export
+
+    /// Re-read the completed-workout list — call on Settings `.onAppear` so the
+    /// Export row reflects a workout finished since this model was built.
+    public func refreshHistory() {
+        historyModel.reload()
+    }
+
+    /// False when there is nothing completed to back up — the Export row is
+    /// disabled with an explanatory footer in that state (spec story 23).
+    public var canExportHistory: Bool { !historyModel.rows.isEmpty }
+
+    /// Serialise the completed training history for the share sheet. The pure
+    /// builder does the work; the view writes the bytes out and presents them.
+    /// `now` stamps the archive and the file name (injected for tests).
+    public func exportDocument(format: ExportFormat, now: Date = Date()) -> ExportDocument {
+        WorkoutHistoryExport.document(for: historyModel.rows, format: format, generatedAt: now)
     }
 }

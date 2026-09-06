@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" font-family="SF Pro Rounded, ui-rounded, -apple-system, system-ui, Helvetica, Arial, sans-serif">
+   <rect width="1280" height="360" fill="#000000"/>
+
+   <g>
+     <text x="64" y="150" fill="#FFFFFF" font-size="96" font-weight="700" letter-spacing="-2">TRACKIT</text>
+     <text x="64" y="196" fill="#8A8A8A" font-size="26" font-weight="500" letter-spacing="6">LOG A SET BY SAYING IT</text>
+  </g>
+
+  <g transform="translate(760,0)">
+    <text x="0" y="96" fill="#666666" font-size="22" font-weight="500" letter-spacing="4">LAST SET</text>
+    <text x="2" y="200" fill="#FFFFFF" font-size="112" font-weight="700" letter-spacing="-3">225 for 5</text>
+    <g transform="translate(0,236)">
+      <rect x="2" y="0" width="300" height="64" rx="16" fill="none" stroke="#30D158" stroke-width="2"/>
+      <text x="30" y="43" fill="#30D158" font-size="32" font-weight="500" letter-spacing="1">1:05 / 2:00</text>
+      <path d="M256 32 l10 10 l20 -22" fill="none" stroke="#30D158" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+</svg>
