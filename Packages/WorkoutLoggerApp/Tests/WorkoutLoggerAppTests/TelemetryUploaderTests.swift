@@ -93,4 +93,39 @@ struct TelemetryUploaderTests {
         let kinds = store.load().pending.map(\.event.kind)
         #expect(kinds == ["set_logged", "parse_failed", "parse_failed"])
     }
+
+    @Test("flush sends one batch as a TelemetryPayload and clears the sent events")
+    func flushSendsBatch() async throws {
+        let (uploader, transport, store) = makeUploader(config: .init(batchSize: 2))
+        uploader.record(.workoutStarted)
+        uploader.record(.setLogged)
+        uploader.record(.parseFailed)
+
+        await uploader.flush()
+
+        #expect(transport.sentBodies.count == 1)
+        let payload = try JSONDecoder().decode(TelemetryPayload.self, from: transport.sentBodies[0])
+        #expect(payload.installID == uploader.installID)
+        #expect(payload.events.map(\.kind) == ["workout_started", "set_logged"])
+        #expect(uploader.pendingCount == 1)             // parseFailed still queued
+        #expect(store.load().pending.map(\.event.kind) == ["parse_failed"])
+    }
+
+    @Test("flush with an empty queue is a no-op")
+    func flushEmptyIsNoop() async {
+        let (uploader, transport, _) = makeUploader()
+        await uploader.flush()
+        #expect(transport.sendCount == 0)
+    }
+
+    @Test("a second flush sends the next batch")
+    func flushDrainsAcrossCalls() async {
+        let (uploader, transport, _) = makeUploader(config: .init(batchSize: 1))
+        uploader.record(.setLogged)
+        uploader.record(.parseFailed)
+        await uploader.flush()
+        await uploader.flush()
+        #expect(transport.sentBodies.count == 2)
+        #expect(uploader.pendingCount == 0)
+    }
 }

@@ -70,4 +70,38 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
         }
         queueStore.save(state)
     }
+
+    /// Deliver at most one batch. Safe to call on app-foreground, on a timer,
+    /// or after `record`; it no-ops when the queue is empty or a back-off
+    /// window is open (Task 6).
+    public func flush() async {
+        guard !state.pending.isEmpty, now() >= nextAttemptAt else { return }
+
+        let batch = Array(state.pending.prefix(config.batchSize))
+        let payload = TelemetryPayload(
+            installID: state.installID,
+            events: batch.map(\.event)
+        )
+        let body: Data
+        do {
+            body = try JSONEncoder().encode(payload)
+        } catch {
+            return // an un-encodable content-free payload is not a real case; drop the attempt
+        }
+
+        do {
+            try await transport.send(body)
+            state.pending.removeFirst(batch.count)
+            failureCount = 0
+            nextAttemptAt = .distantPast
+            queueStore.save(state)
+        } catch {
+            registerFailure()
+        }
+    }
+
+    private func registerFailure() {
+        failureCount += 1
+        // filled in by Task 6
+    }
 }
