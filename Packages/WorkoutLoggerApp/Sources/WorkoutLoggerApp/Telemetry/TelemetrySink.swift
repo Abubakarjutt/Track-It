@@ -6,6 +6,14 @@ import Foundation
 /// no-op default keeps telemetry from doing anything when it is not wired.
 public protocol TelemetrySink: AnyObject {
     func record(_ event: TelemetryEvent)
+    /// Drop any not-yet-delivered events. Called when the user turns analytics
+    /// off — nothing already queued should still be sent. Default: no-op, for
+    /// sinks that hold no queue.
+    func discardPending()
+}
+
+public extension TelemetrySink {
+    func discardPending() {}
 }
 
 /// The default sink: records nothing. Used when telemetry is not wired, so the

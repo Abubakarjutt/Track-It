@@ -100,6 +100,15 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
         }
     }
 
+    /// Opt-out: forget every queued event and close any back-off window. The
+    /// install id survives so a later opt-in is still one anonymous identity.
+    public func discardPending() {
+        state.pending.removeAll()
+        failureCount = 0
+        nextAttemptAt = .distantPast
+        queueStore.save(state)
+    }
+
     private func registerFailure() {
         failureCount += 1
         let exponent = Double(failureCount - 1)

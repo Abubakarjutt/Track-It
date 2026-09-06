@@ -98,4 +98,32 @@ struct TelemetryRecorderTests {
         #expect(bucket(50) == .thirtyToFiftyMinutes)
         #expect(bucket(50.1) == .overFiftyMinutes)
        }
+
+    /// A sink that both captures and can be told it was asked to discard.
+    private final class DiscardSpySink: TelemetrySink {
+        var events: [TelemetryEvent] = []
+        var discardCount = 0
+        func record(_ event: TelemetryEvent) { events.append(event) }
+        func discardPending() { discardCount += 1; events.removeAll() }
+    }
+
+    @Test("turning analytics off tells the sink to discard its pending queue")
+    func offDiscardsPendingQueue() {
+        let sink = DiscardSpySink()
+        let settings = InMemorySettingsStore(analyticsEnabled: true)
+        let recorder = TelemetryRecorder(sink: sink, settings: settings)
+        recorder.record(.workoutStarted)
+        recorder.setEnabled(false)
+        #expect(sink.discardCount == 1)
+        #expect(sink.events.isEmpty)
+    }
+
+    @Test("turning analytics on does not discard anything")
+    func onDoesNotDiscard() {
+        let sink = DiscardSpySink()
+        let settings = InMemorySettingsStore(analyticsEnabled: false)
+        let recorder = TelemetryRecorder(sink: sink, settings: settings)
+        recorder.setEnabled(true)
+        #expect(sink.discardCount == 0)
+    }
 }

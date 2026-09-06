@@ -180,4 +180,18 @@ struct TelemetryUploaderTests {
         await uploader.flush()                         // fail 3 -> ceiling 25 s
         #expect(transport.sendCount == 3)
     }
+
+    @Test("discardPending clears queued events but keeps the install id")
+    func discardPendingClearsQueue() {
+        let (uploader, _, store) = makeUploader()
+        uploader.record(.setLogged)
+        uploader.record(.parseFailed)
+        let id = uploader.installID
+
+        uploader.discardPending()
+
+        #expect(uploader.pendingCount == 0)
+        #expect(store.load().pending.isEmpty)
+        #expect(uploader.installID == id)
+    }
 }

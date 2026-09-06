@@ -33,6 +33,7 @@ public final class TelemetryRecorder {
     public func setEnabled(_ enabled: Bool) {
         settings.analyticsEnabled = enabled
         isEnabled = enabled
+        if !enabled { sink.discardPending() }
     }
 
     /// Coarse, content-free bucketing of a completed workout's duration.
