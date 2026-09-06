@@ -102,6 +102,8 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
 
     private func registerFailure() {
         failureCount += 1
-        // filled in by Task 6
+        let exponent = Double(failureCount - 1)
+        let delay = min(config.baseRetryDelay * pow(2, exponent), config.maxRetryDelay)
+        nextAttemptAt = now().addingTimeInterval(delay)
     }
 }
