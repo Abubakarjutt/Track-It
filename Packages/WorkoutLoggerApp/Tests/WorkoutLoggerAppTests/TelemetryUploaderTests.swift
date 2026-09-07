@@ -246,6 +246,45 @@ struct TelemetryUploaderTests {
         #expect(transport.sendCount == 3)
     }
 
+    @Test("a permanent transport rejection drops the batch instead of retrying it forever")
+    func permanentRejectionDropsBatchAndKeepsDraining() async {
+        let (uploader, transport, store) = makeUploader(config: .init(batchSize: 2))
+        transport.failWith = TelemetryTransportError.permanent(statusCode: 413)
+        for _ in 0..<4 { uploader.record(.setLogged) }   // two batches
+
+        await uploader.flush()
+
+        #expect(transport.sendCount == 2)               // both batches attempted...
+        #expect(uploader.pendingCount == 0)             // ...and both dropped, not retained
+        #expect(store.load().pending.isEmpty)
+    }
+
+    @Test("the queue makes progress after maxConsecutiveFailures unclassified failures")
+    func givesUpOnAWedgedBatch() async {
+        struct Down: Error {}
+        var clock = Date(timeIntervalSince1970: 0)
+        let transport = SpyTelemetryTransport()
+        transport.failWith = Down()
+        let (uploader, _, store) = makeUploader(
+            transport: transport,
+            config: .init(batchSize: 2, baseRetryDelay: 0, maxConsecutiveFailures: 3),
+            now: { clock }
+        )
+        for _ in 0..<4 { uploader.record(.setLogged) }   // batch A + batch B
+
+        await uploader.flush()                            // fail 1
+        await uploader.flush()                            // fail 2
+        #expect(uploader.pendingCount == 4)              // still wedged
+        await uploader.flush()                            // fail 3 -> drop head batch A
+
+        #expect(uploader.pendingCount == 2)              // batch B survives, queue unblocked
+        #expect(store.load().pending.count == 2)
+        clock = Date(timeIntervalSince1970: 1)
+        transport.failWith = nil
+        await uploader.flush()
+        #expect(uploader.pendingCount == 0)              // B now drains
+    }
+
     @Test("discardPending clears queued events but keeps the install id")
     func discardPendingClearsQueue() {
         let (uploader, _, store) = makeUploader()

@@ -13,17 +13,23 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
         public var maxQueuedEvents: Int
         public var baseRetryDelay: TimeInterval
         public var maxRetryDelay: TimeInterval
+        /// After this many consecutive unclassified send failures the head
+        /// batch is dropped, so a poison batch the taxonomy doesn't catch
+        /// can't wedge the queue behind it forever.
+        public var maxConsecutiveFailures: Int
 
         public init(
             batchSize: Int = 20,
             maxQueuedEvents: Int = 500,
             baseRetryDelay: TimeInterval = 60,
-            maxRetryDelay: TimeInterval = 3600
+            maxRetryDelay: TimeInterval = 3600,
+            maxConsecutiveFailures: Int = 10
         ) {
             self.batchSize = batchSize
             self.maxQueuedEvents = maxQueuedEvents
             self.baseRetryDelay = baseRetryDelay
             self.maxRetryDelay = maxRetryDelay
+            self.maxConsecutiveFailures = maxConsecutiveFailures
         }
     }
 
@@ -96,21 +102,36 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
 
             do {
                 try await transport.send(body)
-                // `discardPending()` (opt-out) can run on the main actor while
-                // this send is suspended, emptying the queue. The batch was
-                // delivered, but the user has opted out — honour that: only
-                // drop the batch if it is still at the head, never trap on a
-                // shortened queue.
-                guard state.pending.prefix(batch.count).elementsEqual(batch) else { return }
-                state.pending.removeFirst(batch.count)
+                dropFromHead(batch)      // delivered — drop it (no-op if opt-out emptied the queue mid-send)
                 failureCount = 0
                 nextAttemptAt = .distantPast
-                queueStore.save(state)
+            } catch is TelemetryTransportError {
+                // A permanent rejection: the endpoint will never accept this
+                // batch. Drop it and keep draining the rest of the queue
+                // rather than retrying it forever.
+                dropFromHead(batch)
             } catch {
                 registerFailure()
+                if failureCount >= config.maxConsecutiveFailures {
+                    // Unclassified, but failing over and over — drop the head
+                    // so events behind it can still get out, and restart the
+                    // back-off from the base delay.
+                    dropFromHead(batch)
+                    failureCount = 0
+                    nextAttemptAt = .distantPast
+                }
                 return // stop draining; the back-off window now gates the next flush
             }
         }
+    }
+
+    /// Remove `batch` from the head of the queue, but only if it is still
+    /// there — `discardPending()` (opt-out) can empty the queue during the
+    /// `await` above, and a blind `removeFirst` would then trap.
+    private func dropFromHead(_ batch: [QueuedEvent]) {
+        guard state.pending.prefix(batch.count).elementsEqual(batch) else { return }
+        state.pending.removeFirst(batch.count)
+        queueStore.save(state)
     }
 
     /// Opt-out: forget every queued event and close any back-off window. The
