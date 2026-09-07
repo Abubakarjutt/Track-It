@@ -35,6 +35,7 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
     private var state: TelemetryQueueState
     private var failureCount = 0
     private var nextAttemptAt: Date = .distantPast
+    private var isFlushing = false
 
     public init(
         transport: TelemetryTransport,
@@ -71,32 +72,38 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
         queueStore.save(state)
     }
 
-    /// Deliver at most one batch. Safe to call on app-foreground, on a timer,
-    /// or after `record`; it no-ops when the queue is empty or a back-off
-    /// window is open (Task 6).
+    /// Drain the queue: send batches back to back until it is empty or a send
+    /// fails (which opens a back-off window). Re-entrancy-guarded — a second
+    /// call while one is in flight is a no-op, so wiring this to both
+    /// `scenePhase` and a timer cannot double-send or drop unsent events.
     public func flush() async {
-        guard !state.pending.isEmpty, now() >= nextAttemptAt else { return }
+        guard !isFlushing else { return }
+        isFlushing = true
+        defer { isFlushing = false }
 
-        let batch = Array(state.pending.prefix(config.batchSize))
-        let payload = TelemetryPayload(
-            installID: state.installID,
-            events: batch.map(\.event)
-        )
-        let body: Data
-        do {
-            body = try JSONEncoder().encode(payload)
-        } catch {
-            return // an un-encodable content-free payload is not a real case; drop the attempt
-        }
+        while !state.pending.isEmpty, now() >= nextAttemptAt {
+            let batch = Array(state.pending.prefix(config.batchSize))
+            let payload = TelemetryPayload(
+                installID: state.installID,
+                events: batch.map(\.event)
+            )
+            let body: Data
+            do {
+                body = try JSONEncoder().encode(payload)
+            } catch {
+                return // an un-encodable content-free payload is not a real case; drop the attempt
+            }
 
-        do {
-            try await transport.send(body)
-            state.pending.removeFirst(batch.count)
-            failureCount = 0
-            nextAttemptAt = .distantPast
-            queueStore.save(state)
-        } catch {
-            registerFailure()
+            do {
+                try await transport.send(body)
+                state.pending.removeFirst(batch.count)
+                failureCount = 0
+                nextAttemptAt = .distantPast
+                queueStore.save(state)
+            } catch {
+                registerFailure()
+                return // stop draining; the back-off window now gates the next flush
+            }
         }
     }
 

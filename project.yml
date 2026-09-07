@@ -14,7 +14,9 @@ targets:
     type: application
     platform: iOS
     sources:
-      - App
+      - path: App
+        excludes:
+          - "Tests/**"
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"

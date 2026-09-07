@@ -1,9 +1,10 @@
 import Foundation
 
-/// Where a `TelemetryEvent` goes. The real `System` implementation (in `App/`)
-/// is a local, batched-when-online persistent queue; here it is an injected seam
-/// so the recorder's flag behaviour can be tested with a capturing fake. A
-/// no-op default keeps telemetry from doing anything when it is not wired.
+/// Where a `TelemetryEvent` goes. The app wires this to `TelemetryUploader`
+/// (persisted queue + batched `URLSession` delivery + back-off, backed by
+/// `FileTelemetryQueueStore`); tests inject a capturing fake so the recorder's
+/// flag behaviour is checkable in isolation. A no-op `discardPending` default
+/// keeps sinks that hold no queue trivially conformant.
 public protocol TelemetrySink: AnyObject {
     func record(_ event: TelemetryEvent)
     /// Drop any not-yet-delivered events. Called when the user turns analytics

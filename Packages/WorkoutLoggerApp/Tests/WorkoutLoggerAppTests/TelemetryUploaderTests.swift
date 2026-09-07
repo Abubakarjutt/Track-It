@@ -43,12 +43,27 @@ struct TelemetryUploaderTests {
         #expect(spy.sendCount == 2)
     }
 
-    private func makeUploader(
-        transport: SpyTelemetryTransport = SpyTelemetryTransport(),
+    /// A transport whose `send` blocks until `release()` is called, so a test
+    /// can hold one flush mid-flight and start a second.
+    final class GatedTransport: TelemetryTransport, @unchecked Sendable {
+        private(set) var sendCount = 0
+        private var continuations: [CheckedContinuation<Void, Never>] = []
+        func send(_ body: Data) async throws {
+            sendCount += 1
+            await withCheckedContinuation { continuations.append($0) }
+        }
+        func release() {
+            let cs = continuations; continuations = []
+            for c in cs { c.resume() }
+        }
+    }
+
+    private func makeUploader<Transport: TelemetryTransport>(
+        transport: Transport = SpyTelemetryTransport(),
         store: InMemoryTelemetryQueueStore = InMemoryTelemetryQueueStore(),
         config: TelemetryUploader.Config = .init(),
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
-    ) -> (TelemetryUploader, SpyTelemetryTransport, InMemoryTelemetryQueueStore) {
+    ) -> (TelemetryUploader, Transport, InMemoryTelemetryQueueStore) {
         (TelemetryUploader(transport: transport, queueStore: store, config: config, now: now),
          transport, store)
     }
@@ -89,13 +104,13 @@ struct TelemetryUploaderTests {
         for _ in 0..<5 { uploader.record(.setLogged) }
         for _ in 0..<2 { uploader.record(.parseFailed) }
         #expect(uploader.pendingCount == 3)
-        // the three survivors are the newest: parseFailed, parseFailed, setLogged
+        // survivors in queue order (oldest kept first): one setLogged, then the two parseFailed
         let kinds = store.load().pending.map(\.event.kind)
         #expect(kinds == ["set_logged", "parse_failed", "parse_failed"])
     }
 
-    @Test("flush sends one batch as a TelemetryPayload and clears the sent events")
-    func flushSendsBatch() async throws {
+    @Test("flush drains queued events, sending TelemetryPayload batches in order")
+    func flushSendsQueuedEventsInBatchOrder() async throws {
         let (uploader, transport, store) = makeUploader(config: .init(batchSize: 2))
         uploader.record(.workoutStarted)
         uploader.record(.setLogged)
@@ -103,12 +118,45 @@ struct TelemetryUploaderTests {
 
         await uploader.flush()
 
-        #expect(transport.sentBodies.count == 1)
+        #expect(transport.sentBodies.count == 2)        // [workout_started, set_logged] then [parse_failed]
+        let first = try JSONDecoder().decode(TelemetryPayload.self, from: transport.sentBodies[0])
+        #expect(first.events.map(\.kind) == ["workout_started", "set_logged"])
         let payload = try JSONDecoder().decode(TelemetryPayload.self, from: transport.sentBodies[0])
         #expect(payload.installID == uploader.installID)
         #expect(payload.events.map(\.kind) == ["workout_started", "set_logged"])
-        #expect(uploader.pendingCount == 1)             // parseFailed still queued
-        #expect(store.load().pending.map(\.event.kind) == ["parse_failed"])
+        #expect(uploader.pendingCount == 0)
+        #expect(store.load().pending.isEmpty)
+    }
+
+    @Test("a second flush while one is in flight is a no-op (no double-send)")
+    func flushIsNotReentrant() async {
+        let gate = GatedTransport()
+        let (uploader, _, _) = makeUploader(transport: gate, config: .init(batchSize: 10))
+        uploader.record(.setLogged)
+        uploader.record(.parseFailed)
+
+        async let first: Void = uploader.flush()   // enters send, suspends on the gate
+        await Task.yield()
+        async let second: Void = uploader.flush()  // must see isFlushing == true and return
+        await Task.yield()
+
+        #expect(gate.sendCount == 1)               // only the first flush is sending
+        gate.release()
+        _ = await (first, second)
+        #expect(uploader.pendingCount == 0)        // first flush drained everything
+        #expect(gate.sendCount == 1)               // second flush never sent
+    }
+
+    @Test("one flush drains the whole queue in batchSize chunks")
+    func flushDrainsWholeQueue() async {
+        let (uploader, transport, store) = makeUploader(config: .init(batchSize: 2))
+        for _ in 0..<5 { uploader.record(.setLogged) }   // 5 events, batchSize 2
+
+        await uploader.flush()
+
+        #expect(transport.sentBodies.count == 3)   // 2 + 2 + 1
+        #expect(uploader.pendingCount == 0)
+        #expect(store.load().pending.isEmpty)
     }
 
     @Test("flush with an empty queue is a no-op")

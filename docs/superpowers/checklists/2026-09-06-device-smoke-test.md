@@ -41,3 +41,4 @@ Every box is a real interaction, not a screenshot review.
 ## Latency (tracked metric — spec § Success gates)
 
 - [ ] Log ~20 sets on device; the emitted `set_logged_latency` buckets have a median ≤ 3000 ms.
+- [ ] Note: `set_logged_latency` is emitted only for sets logged straight from an utterance — a set completed via the tap-select shortlist emits none (it would fold in human choice time). Read the median as "press-to-logged for utterances that resolved without disambiguation."

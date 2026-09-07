@@ -26,6 +26,7 @@ struct TelemetryPayloadTests {
         )
         let data = try JSONEncoder().encode(payload)
         let root = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(root.keys) == ["install_id", "events"])
         let objects = try #require(root["events"] as? [[String: Any]])
         for object in objects {
             let keys = Set(object.keys)

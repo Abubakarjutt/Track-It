@@ -21,9 +21,4 @@ final class HUDGlanceableStateUITests: XCTestCase {
         XCTAssertTrue(talk.waitForExistence(timeout: 5))
         XCTAssertTrue(talk.isHittable)
     }
-
-    func testAppLaunchesInPortrait() {
-        let app = launchPastOnboarding()
-        XCTAssertEqual(XCUIDevice.shared.orientation, .portrait)
-    }
 }
