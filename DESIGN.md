@@ -210,6 +210,7 @@ Two corner radii cover the entire app: **16pt** (the rest-timer capsule) and **2
 - **Privacy section (Settings):** Two stock `Toggle` rows — "Share anonymous analytics" and "Help improve recognition" — each with a one-line footer stating plainly what is and is not sent. A "Review N phrases" row appears only when the failed-utterance queue is non-empty, leading to the review screen. No visual language beyond the rest of Settings; the section's job is to be legible, not distinct.
 - **Recognition Review screen:** A stock `List`, one row per queued transcript, each with a `Discard` (destructive role) and a `Submit` action. A phrase leaves the device only on the Submit tap; both actions remove the row. An empty queue shows a `ContentUnavailableView` so the screen is never blank.
 - **Telemetry has no surface (rule):** No dashboard, stats screen, or streaks exist anywhere in the app — analytics is upload-only plus its single opt-in toggle, consistent with the "no gamification chrome" rule (the personal-record trophy remains the only celebratory moment).
+- **Analytics pipeline:** Uploads are batched, retried with back-off, capped, and dropped on opt-out; every event is one of a fixed set of content-free shapes (`TelemetryPayloadCodec`). Each logged set also emits a 100 ms-bucketed press-to-logged latency.
 
 ## Do's and Don'ts
 
