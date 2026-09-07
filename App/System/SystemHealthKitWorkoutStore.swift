@@ -42,7 +42,8 @@ final class SystemHealthKitWorkoutStore: HealthKitWorkoutStore {
      }
 
     func write(_ workout: Workout, activeEnergyKilocalories: Double) {
-        guard let started = workout.startedAt, let ended = workout.endedAt else { return }
+        let started = workout.startedAt
+        guard let ended = workout.endedAt else { return }
 
         let energy = HKQuantity(
             unit: .kilocalorie(),

@@ -28,11 +28,14 @@ targets:
       - package: WorkoutLoggerApp
         product: WorkoutLoggerApp
   TrackitTests:
-    type: bundle.unit-test
+    type: bundle.ui-testing
     platform: iOS
     sources:
       - Path: App/Tests
         createIntermediateGroups: true
         optional: true
+    settings:
+      base:
+        TEST_TARGET_NAME: Trackit
     dependencies:
       - target: Trackit

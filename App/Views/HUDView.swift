@@ -247,6 +247,7 @@ struct HUDView: View {
             .accessibilityDirectTouch()
             .accessibilityLabel(hud.isListening ? "Listening" : (hud.isProcessing ? "Working" : "Hold to talk"))
             .accessibilityHint(hud.isListening || hud.isProcessing ? "" : "Double-tap and hold to speak a set")
+            .accessibilityIdentifier("talkButton")
     }
 }
 

@@ -18,5 +18,7 @@
     <string>Trackit listens while you speak each set.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Trackit turns your spoken sets into a workout log, on device.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Trackit writes each finished workout to Apple Health as a strength-training session.</string>
 </dict>
 </plist>
