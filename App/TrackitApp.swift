@@ -8,11 +8,14 @@ import WorkoutLoggerApp
 @main
 @MainActor
 struct TrackitApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var model: WorkoutSessionModel
     private let historyModel: WorkoutHistoryModel
     private let settingsModel: SettingsModel
     private let onboardingModel: OnboardingModel
     private let store: SwiftDataWorkoutStore
+    private let telemetryUploader: TelemetryUploader
     private let historyUnavailable: Bool
 
     init() {
@@ -66,7 +69,12 @@ struct TrackitApp: App {
             settings: settingsStore
           )
 
-        let telemetry = TelemetryRecorder(sink: SystemTelemetrySink(), settings: settingsStore)
+        let telemetryUploader = TelemetryUploader(
+            transport: TelemetryHTTPTransport(),
+            queueStore: FileTelemetryQueueStore()
+        )
+        self.telemetryUploader = telemetryUploader
+        let telemetry = TelemetryRecorder(sink: telemetryUploader, settings: settingsStore)
         let failedUtterances = FailedUtteranceModel(
             store: SystemFailedUtteranceStore(), settings: settingsStore
           )
@@ -112,6 +120,11 @@ struct TrackitApp: App {
                 historyUnavailable: historyUnavailable,
                 settingsModel: settingsModel, onboardingModel: onboardingModel
             )
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                let uploader = telemetryUploader
+                Task { await uploader.flush() }
+            }
         }
     }
 
