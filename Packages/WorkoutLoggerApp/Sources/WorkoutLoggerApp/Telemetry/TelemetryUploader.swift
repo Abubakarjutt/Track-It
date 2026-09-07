@@ -96,6 +96,12 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
 
             do {
                 try await transport.send(body)
+                // `discardPending()` (opt-out) can run on the main actor while
+                // this send is suspended, emptying the queue. The batch was
+                // delivered, but the user has opted out — honour that: only
+                // drop the batch if it is still at the head, never trap on a
+                // shortened queue.
+                guard state.pending.prefix(batch.count).elementsEqual(batch) else { return }
                 state.pending.removeFirst(batch.count)
                 failureCount = 0
                 nextAttemptAt = .distantPast

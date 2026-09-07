@@ -159,6 +159,23 @@ struct TelemetryUploaderTests {
         #expect(store.load().pending.isEmpty)
     }
 
+    @Test("opting out mid-send does not trap and does not un-discard the batch")
+    func discardDuringInFlightSendIsSafe() async {
+        let gate = GatedTransport()
+        let (uploader, _, store) = makeUploader(transport: gate, config: .init(batchSize: 10))
+        uploader.record(.setLogged)
+        uploader.record(.parseFailed)
+
+        async let flushing: Void = uploader.flush()
+        while gate.sendCount == 0 { await Task.yield() }  // wait until the send is genuinely in flight
+        uploader.discardPending()                         // opt-out empties the queue mid-send
+        gate.release()
+        await flushing                                    // must not trap on removeFirst
+
+        #expect(uploader.pendingCount == 0)           // opt-out held; batch not re-added
+        #expect(store.load().pending.isEmpty)
+    }
+
     @Test("flush with an empty queue is a no-op")
     func flushEmptyIsNoop() async {
         let (uploader, transport, _) = makeUploader()
