@@ -76,6 +76,14 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
             state.pending.removeFirst(state.pending.count - config.maxQueuedEvents)
         }
         queueStore.save(state)
+
+        // Size trigger (spec 5b): once a whole batch has accumulated, try to
+        // send it now rather than waiting for the next foreground. Stays
+        // synchronous — the detached flush is re-entrancy-guarded and
+        // back-off-gated, so it's safe alongside the scenePhase trigger.
+        if state.pending.count % config.batchSize == 0 {
+            Task { await self.flush() }
+        }
     }
 
     /// Drain the queue: send batches back to back until it is empty or a send

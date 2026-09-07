@@ -246,6 +246,18 @@ struct TelemetryUploaderTests {
         #expect(transport.sendCount == 3)
     }
 
+    @Test("record auto-flushes once a full batch has accumulated")
+    func recordAutoFlushesAtBatchSize() async {
+        let (uploader, transport, _) = makeUploader(config: .init(batchSize: 3))
+        uploader.record(.setLogged)
+        uploader.record(.setLogged)
+        #expect(transport.sendCount == 0)              // below the batch threshold
+        uploader.record(.setLogged)                    // hits batchSize -> schedules a flush
+        for _ in 0..<20 where transport.sendCount == 0 { await Task.yield() }
+        #expect(transport.sendCount == 1)
+        #expect(uploader.pendingCount == 0)
+    }
+
     @Test("a permanent transport rejection drops the batch instead of retrying it forever")
     func permanentRejectionDropsBatchAndKeepsDraining() async {
         let (uploader, transport, store) = makeUploader(config: .init(batchSize: 2))
