@@ -303,7 +303,7 @@ public final class WorkoutSessionModel {
             knownBestExercises = Self.exercisesWithLoadedWorkingSet(in: history())
             onWorkoutEnded(ended)
             onTelemetry(WorkoutSessionModel.completedEvent(for: ended))
-         }
+        }
 
         let setsAfter = totalSetCount(workout)
         let loggedASet = setsAfter > setsBefore
@@ -317,8 +317,8 @@ public final class WorkoutSessionModel {
 
         if unresolved {
             onTelemetry(.parseFailed)
-             // Only the transcript text leaves the loop, and only the
-             // FailedUtteranceModel decides whether it is enqueued (its opt-in).
+            // Only the transcript text leaves the loop, and only the
+            // FailedUtteranceModel decides whether it is enqueued (its opt-in).
             onUnresolvedUtterance(transcript)
         }
 
@@ -332,17 +332,17 @@ public final class WorkoutSessionModel {
 
         if loggedASet {
             restReachedFired = false
-             // A new set restarts rest; `restStartedAt` re-syncs from the engine
-             // but `restElapsed` is only recomputed in `tick()`, so zero it now
-             // rather than show the previous period's value for up to a second.
+            // A new set restarts rest; `restStartedAt` re-syncs from the engine
+            // but `restElapsed` is only recomputed in `tick()`, so zero it now
+            // rather than show the previous period's value for up to a second.
             restElapsed = 0
-         }
+        }
         return loggedASet
-     }
+    }
 
-     /// The content-free `workoutCompleted` event: only the total and working-set
-     /// counts and a coarse duration bucket — no times, no loads, no names.
-     static func completedEvent(for workout: Workout) -> TelemetryEvent {
+    /// The content-free `workoutCompleted` event: only the total and working-set
+    /// counts and a coarse duration bucket — no times, no loads, no names.
+    static func completedEvent(for workout: Workout) -> TelemetryEvent {
         let total = totalSetCountOf(workout)
         let working = workingSetCount(of: workout)
         return .workoutCompleted(
@@ -350,7 +350,7 @@ public final class WorkoutSessionModel {
             workingSetCount: working,
             duration: TelemetryRecorder.durationBucket(of: workout)
         )
-     }
+    }
 
     private func fireHaptic(results: [ParseResult], loggedASet: Bool, firePersonalRecord: Bool) {
         if loggedASet {
