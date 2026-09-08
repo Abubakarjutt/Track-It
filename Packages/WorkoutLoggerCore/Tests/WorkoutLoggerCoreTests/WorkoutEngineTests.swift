@@ -382,8 +382,103 @@ struct WorkoutEngineTests {
         #expect(engine.personalRecords.map(\.estimatedOneRepMaxKilograms) == [120])
     }
 
-    @Test("a correction keeps the original set's timestamp and rest clock")
-    func correctionPreservesTiming() {
+    // MARK: - In-session re-seed of the PR bar (cluster 1a)
+
+    private let seededBench = Exercise(name: "Bench", aliases: ["bench"])
+
+    @Test("a second workout in the same app run judges records against the first's best")
+    func secondWorkoutReSeedsThePRBar() {
+        // An app run that spans two workouts supplies a live best provider instead
+        // of a launch-captured value. Workout A sets a record; workout B then judges
+        // against A's best, so a lesser set is not a PR and a set that beats A is.
+        final class Best: @unchecked Sendable { var value = 0.0 }
+        let best = Best()
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(
+            store: store,
+            library: ExerciseLibrary([seededBench]),
+            knownBestsProvider: { ["Bench": best.value] }
+        )
+
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"]) // e1RM ≈ 116.67 — a record this app run
+
+        // A new workout in the same app run re-seeds from the provider.
+        best.value = 116.67
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["90 for 5"])   // e1RM ≈ 105 — below A's best, not a PR
+        #expect(engine.personalRecords.isEmpty)
+
+        engine.hear(["130 for 5"]) // e1RM ≈ 151.67 — above A's best, a PR
+        #expect(engine.personalRecords.count == 1)
+        #expect(engine.personalRecords.first?.estimatedOneRepMaxKilograms == estimatedOneRepMax(loadKilograms: 130, reps: 5))
+    }
+
+    @Test("a correction re-derives the PR bar from the provider seed, not the launch seed")
+    func recomputeAfterEditKeepsProviderSeed() {
+        // Workout B is seeded (via the provider) with a best of 150 — as if an
+        // earlier workout in this app run set it. Removing a set triggers
+        // recomputeBest; it must fold this workout's sets over 150, not over the
+        // empty launch-time knownBests. A later set at ≈145.83 e1RM is then *not* a
+        // PR; with the bar collapsed onto the launch seed it would be mis-flagged.
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(
+            store: store,
+            library: ExerciseLibrary([seededBench]),
+            knownBestsProvider: { ["Bench": 150] }
+        )
+
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"])  // e1RM ≈ 116.67 — below the seed
+        engine.hear(["105 for 5"])  // e1RM ≈ 122.5 — below the seed; entry now has two sets
+        #expect(engine.personalRecords.isEmpty)
+
+        engine.removeSet(at: 0, 1)  // drop the 105×5 — triggers recomputeBest for Bench
+
+        engine.hear(["125 for 5"])  // e1RM ≈ 145.83 — under the 150 seed, so no PR
+        #expect(engine.personalRecords.isEmpty)
+    }
+
+    // MARK: - Parser context populated (cluster 1b)
+
+    @Test("hearing a set populates the parsing context with the active exercise and its previous set")
+    func hearFeedsParsingContext() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"]) // no prior set yet, so the context's previousSet is nil here
+        engine.hear(["110 for 3"]) // now the context sees the first set as "previous"
+
+        #expect(engine.lastParsingContext.activeExercise == bench)
+        let previous = engine.lastParsingContext.previousSet
+        #expect(previous?.load == 100)        // ParsedSet carries the load in its display unit
+        #expect(previous?.loadUnit == .kilograms)
+        #expect(previous?.reps == 5)
+    }
+
+    @Test("the parsing context's previous set reflects the most recent set on the active entry")
+    func previousSetTracksTheLastSet() {
+        let bench = Exercise(name: "Bench", aliases: ["bench"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]), unit: .kilograms)
+        engine.startWorkout()
+        engine.hear(["bench"])
+        engine.hear(["100 for 5"])
+        engine.hear(["110 for 3"]) // context at this utterance still sees the 100x5 as "previous"
+        #expect(engine.lastParsingContext.previousSet?.reps == 5)
+        #expect(engine.lastParsingContext.previousSet?.load == 100)
+        engine.hear(["120 for 2"]) // now the 110x3 is the previous set
+        #expect(engine.lastParsingContext.previousSet?.reps == 3)
+        #expect(engine.lastParsingContext.previousSet?.load == 110)
+    }
+
+     @Test("a correction keeps the original set's timestamp and rest clock")
+     func correctionPreservesTiming() {
         var clock = Date(timeIntervalSince1970: 0)
         let bench = Exercise(name: "Bench", aliases: ["bench"])
         let store = InMemoryWorkoutStore()
