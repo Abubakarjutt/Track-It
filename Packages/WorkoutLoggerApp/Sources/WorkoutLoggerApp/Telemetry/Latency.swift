@@ -16,6 +16,11 @@ public enum LatencyMetric {
     /// `events`, or `nil` when there are none. Even counts take the
     /// lower-middle element — a stable, dependency-free definition for a
     /// tracked metric.
+    ///
+    /// Not called at runtime yet: this is the exact definition of the
+    /// spec's launch gate (≤ 3 s median press-to-confirmed-set), kept here
+    /// for the device-loop analysis (#7) and any future server-side
+    /// aggregation to share one definition rather than reinvent it.
     public static func medianBucketMillis(of events: [TelemetryEvent]) -> Int? {
         let buckets = events
             .compactMap { event -> Int? in

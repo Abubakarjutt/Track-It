@@ -5,6 +5,15 @@ import Foundation
 /// a hard cap, and opt-out discard. It is a `TelemetrySink`, so the recorder
 /// forwards straight to it. `record(_:)` only touches local state — the
 /// logging loop never waits on the network (`PRODUCT.md`).
+///
+/// `TelemetrySink` is a non-isolated protocol (its other conformers — the
+/// no-op sink and the test fake — hold no actor state). The `@MainActor
+/// TelemetrySink` spelling below is a deliberate *isolated conformance*: the
+/// type keeps its `@MainActor` isolation and the compiler confines the
+/// conformance to the main actor, which is where the recorder already calls
+/// it. Drop the isolated spelling and the conformance would have to be
+/// `nonisolated`, forcing `record(_:)` to hop off the actor and reopening the
+/// data race the isolation is here to prevent.
 @MainActor
 public final class TelemetryUploader: @MainActor TelemetrySink {
 
@@ -13,17 +22,37 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
         public var maxQueuedEvents: Int
         public var baseRetryDelay: TimeInterval
         public var maxRetryDelay: TimeInterval
+        /// After this many consecutive unclassified send failures the head
+        /// batch is dropped, so a poison batch the taxonomy doesn't catch
+        /// can't wedge the queue behind it forever.
+        public var maxConsecutiveFailures: Int
 
         public init(
             batchSize: Int = 20,
             maxQueuedEvents: Int = 500,
             baseRetryDelay: TimeInterval = 60,
-            maxRetryDelay: TimeInterval = 3600
+            maxRetryDelay: TimeInterval = 3600,
+            maxConsecutiveFailures: Int = 10
         ) {
+            // These are a programmer contract, not runtime input — the type is
+            // `public` so a caller *could* pass nonsense. A non-positive
+            // `batchSize` traps `flush`'s `prefix(batchSize)`; a non-positive
+            // `maxConsecutiveFailures` makes the give-up backstop fire on the
+            // first failure, silently disabling retry; a non-positive cap trims
+            // every event on the next `record`. Fail loudly here.
+            // (`maxQueuedEvents < batchSize` is fine — `prefix` just returns the
+            // short queue — so it is deliberately not constrained.)
+            precondition(batchSize > 0, "batchSize must be positive")
+            precondition(maxQueuedEvents > 0, "maxQueuedEvents must be positive")
+            precondition(maxConsecutiveFailures > 0, "maxConsecutiveFailures must be positive")
+            precondition(baseRetryDelay >= 0, "baseRetryDelay must not be negative")
+            precondition(maxRetryDelay >= baseRetryDelay, "maxRetryDelay must not be below baseRetryDelay")
+
             self.batchSize = batchSize
             self.maxQueuedEvents = maxQueuedEvents
             self.baseRetryDelay = baseRetryDelay
             self.maxRetryDelay = maxRetryDelay
+            self.maxConsecutiveFailures = maxConsecutiveFailures
         }
     }
 
@@ -36,6 +65,11 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
     private var failureCount = 0
     private var nextAttemptAt: Date = .distantPast
     private var isFlushing = false
+    /// Bumped whenever the head of `pending` moves or clears out from under an
+    /// in-flight send — `discardPending()` and the `record(_:)` cap-trim. A
+    /// flush captures it before `await`ing the transport and refuses to
+    /// `removeFirst` if it changed (see `dropFromHead`).
+    private var queueGeneration = 0
 
     public init(
         transport: TelemetryTransport,
@@ -62,14 +96,30 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
     // MARK: TelemetrySink
 
     public func record(_ event: TelemetryEvent) {
+        let recordedAt = now()
         state.pending.append(QueuedEvent(
             event: TelemetryPayloadCodec.payload(for: event),
-            recordedAt: now()
+            recordedAt: recordedAt
         ))
         if state.pending.count > config.maxQueuedEvents {
             state.pending.removeFirst(state.pending.count - config.maxQueuedEvents)
+            queueGeneration &+= 1   // the head just moved; invalidate any in-flight drop
         }
         queueStore.save(state)
+
+        // Size trigger (spec 5b): once at least a batch has accumulated, try to
+        // send now rather than waiting for the next foreground. Not gated on an
+        // exact multiple of `batchSize` — a short trailing batch left behind by
+        // a partial drain still sits above the threshold, so the next `record`
+        // re-triggers it once the back-off window closes. The detached flush is
+        // re-entrancy-guarded and back-off-gated; the guards here only keep it
+        // from spawning a Task that would immediately no-op (already flushing,
+        // or a back-off window still open).
+        if state.pending.count >= config.batchSize,
+           !isFlushing,
+           recordedAt >= nextAttemptAt {
+            Task { await self.flush() }
+        }
     }
 
     /// Drain the queue: send batches back to back until it is empty or a send
@@ -94,23 +144,52 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
                 return // an un-encodable content-free payload is not a real case; drop the attempt
             }
 
+            let generation = queueGeneration   // capture before the await
             do {
                 try await transport.send(body)
-                // `discardPending()` (opt-out) can run on the main actor while
-                // this send is suspended, emptying the queue. The batch was
-                // delivered, but the user has opted out — honour that: only
-                // drop the batch if it is still at the head, never trap on a
-                // shortened queue.
-                guard state.pending.prefix(batch.count).elementsEqual(batch) else { return }
-                state.pending.removeFirst(batch.count)
+                dropFromHead(batch, generation: generation)   // delivered
                 failureCount = 0
                 nextAttemptAt = .distantPast
-                queueStore.save(state)
+            } catch TelemetryTransportError.permanent(_) {
+                // A permanent rejection: the endpoint will never accept this
+                // batch. Dropping it is progress just like a successful send —
+                // clear the transient-failure state too, so a later batch is
+                // not given up on early on a `failureCount` that belonged to
+                // this one, then keep draining the rest of the queue.
+                dropFromHead(batch, generation: generation)
+                failureCount = 0
+                nextAttemptAt = .distantPast
             } catch {
                 registerFailure()
-                return // stop draining; the back-off window now gates the next flush
+                if failureCount >= config.maxConsecutiveFailures {
+                    // Unclassified, but failing over and over — drop the head
+                    // so events behind it can still get out, clear the back-off
+                    // so the loop keeps draining the rest of the queue.
+                    dropFromHead(batch, generation: generation)
+                    failureCount = 0
+                    nextAttemptAt = .distantPast
+                    continue
+                }
+                return // transient: stop draining; the back-off window gates the next flush
             }
         }
+    }
+
+    /// Remove `batch` from the head of the queue — but only if the queue was
+    /// not structurally changed while the send was in flight. `discardPending()`
+    /// (opt-out) and the `record(_:)` cap-trim both move or clear the head and
+    /// bump `queueGeneration`; a blind `removeFirst` then trims unsent events,
+    /// or traps on an emptied queue.
+    ///
+    /// On a generation mismatch after a *successful* send, the delivered events
+    /// stay queued and the next drain re-sends the surviving overlap — an
+    /// at-least-once delivery window. It is only reachable when the cap-trim
+    /// fires mid-send (queue pinned at `maxQueuedEvents`), the payload is
+    /// content-free, and the alternative — trusting a moved head — is worse.
+    private func dropFromHead(_ batch: [QueuedEvent], generation: Int) {
+        guard generation == queueGeneration else { return }
+        state.pending.removeFirst(batch.count)
+        queueStore.save(state)
     }
 
     /// Opt-out: forget every queued event and close any back-off window. The
@@ -119,6 +198,7 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
         state.pending.removeAll()
         failureCount = 0
         nextAttemptAt = .distantPast
+        queueGeneration &+= 1   // any in-flight send must not drop a re-recorded batch
         queueStore.save(state)
     }
 

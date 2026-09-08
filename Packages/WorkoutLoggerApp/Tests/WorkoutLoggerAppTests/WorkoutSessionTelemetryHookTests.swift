@@ -31,8 +31,12 @@ struct WorkoutSessionTelemetryHookTests {
         let unresolved: TranscriptBox
        }
 
+    /// The one rig builder: an in-memory SwiftData stack, an engine, and a
+    /// session wired to event/transcript boxes. Callers vary only the
+    /// `TranscriptSource` and the clock — everything else is fixed here so the
+    /// scripted and clock-advancing rigs can't drift apart.
     private func makeRig(
-        script: [[String]],
+        transcriptSource: TranscriptSource,
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
       ) throws -> Rig {
         let container = try ModelContainer(
@@ -47,7 +51,7 @@ struct WorkoutSessionTelemetryHookTests {
         let unresolved = TranscriptBox()
         let model = WorkoutSessionModel(
             engine: engine,
-            transcriptSource: ScriptedTranscriptSource(script),
+            transcriptSource: transcriptSource,
             readbackVoice: SpyReadbackVoice(),
             haptics: SpyHaptics(),
             library: Self.library,
@@ -57,6 +61,14 @@ struct WorkoutSessionTelemetryHookTests {
             onUnresolvedUtterance: { unresolved.add($0) }
           )
         return Rig(model: model, events: events, unresolved: unresolved)
+       }
+
+       /// A rig driven by a fixed script through `ScriptedTranscriptSource`.
+    private func makeRig(
+        script: [[String]],
+        now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_000) }
+      ) throws -> Rig {
+        try makeRig(transcriptSource: ScriptedTranscriptSource(script), now: now)
        }
 
        private func say(_ rig: Rig) async {
@@ -152,31 +164,23 @@ struct WorkoutSessionTelemetryHookTests {
         }
     }
 
+    /// A rig whose `endUtterance()` advances `clock` by `step` seconds, so a
+    /// test can put real elapsed time into the press→logged latency span.
     private func makeDelayingRig(
         script: [[String]], clock: ClockBox, step: TimeInterval
     ) throws -> Rig {
-        let container = try ModelContainer(
-            for: WorkoutRecord.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        let store = SwiftDataWorkoutStore(context: ModelContext(container))
-        let engine = WorkoutEngine(
-            store: store, library: Self.library, unit: .kilograms, now: { clock.date }
-        )
-        let events = EventBox()
-        let unresolved = TranscriptBox()
-        let model = WorkoutSessionModel(
-            engine: engine,
+        try makeRig(
             transcriptSource: DelayingTranscriptSource(script, clock: clock, step: step),
-            readbackVoice: SpyReadbackVoice(),
-            haptics: SpyHaptics(),
-            library: Self.library,
-            now: { clock.date },
-            history: { store.history() },
-            onTelemetry: { events.add($0) },
-            onUnresolvedUtterance: { unresolved.add($0) }
+            now: { clock.date }
         )
-        return Rig(model: model, events: events, unresolved: unresolved)
+    }
+
+    /// `endUtterance()` always throws — the recogniser failing after the press.
+    /// No transcript reaches the parser, so `released()` bails before `apply`.
+    final class FailingTranscriptSource: TranscriptSource {
+        struct Failure: Error {}
+        func beginUtterance() {}
+        func endUtterance() async throws -> [String] { throw Failure() }
     }
 
     @Test("a logged set emits one setLoggedLatency bucket for the press→logged span")
@@ -203,6 +207,16 @@ struct WorkoutSessionTelemetryHookTests {
         #expect(rig.events.events.contains {
             if case .setLoggedLatency = $0 { return true }; return false
         } == false)
+    }
+
+    @Test("a thrown endUtterance() logs nothing and emits no latency event")
+    func endUtteranceThrowEmitsNoLatency() async throws {
+        let rig = try makeRig(transcriptSource: FailingTranscriptSource())
+        await say(rig)
+        // released() bails in its catch before apply(), so not one event fires
+        // and no transcript is routed for review — there was no transcript.
+        #expect(rig.events.events.isEmpty)
+        #expect(rig.unresolved.captured.isEmpty)
     }
 
     @Test("setLogged still fires exactly once per set alongside the latency event")

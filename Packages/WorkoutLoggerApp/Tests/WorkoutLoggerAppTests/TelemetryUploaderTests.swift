@@ -19,6 +19,13 @@ struct TelemetryUploaderTests {
         #expect(try JSONDecoder().decode(TelemetryQueueState.self, from: data) == state)
     }
 
+    @Test("a fresh in-memory queue store loads an empty queue with a minted install id")
+    func inMemoryStoreStartsEmpty() {
+        let fresh = InMemoryTelemetryQueueStore().load()
+        #expect(fresh.pending.isEmpty)
+        #expect(!fresh.installID.isEmpty)   // TelemetryQueueState() mints one by default
+    }
+
     @Test("the in-memory queue store returns what was last saved")
     func inMemoryStoreRoundTrips() {
         let store = InMemoryTelemetryQueueStore()
@@ -244,6 +251,128 @@ struct TelemetryUploaderTests {
         clock = Date(timeIntervalSince1970: 32)
         await uploader.flush()                         // fail 3 -> ceiling 25 s
         #expect(transport.sendCount == 3)
+    }
+
+    @Test("a successful send resets the failure count so the next failure backs off from the base delay, not a doubled one")
+    func successResetsFailureCount() async {
+        var clock = Date(timeIntervalSince1970: 0)
+        let transport = SpyTelemetryTransport()
+        struct Down: Error {}
+        transport.failWith = Down()
+        let (uploader, _, _) = makeUploader(
+            transport: transport,
+            // batchSize 10 with one event per record keeps `record` from
+            // scheduling its own detached flush, so each flush below is the
+            // explicit one this test drives.
+            config: .init(batchSize: 10, baseRetryDelay: 10, maxRetryDelay: 3600),
+            now: { clock }
+        )
+
+        uploader.record(.setLogged)
+        await uploader.flush()                          // fail 1 -> window 10 s (t=0 -> 10)
+
+        clock = Date(timeIntervalSince1970: 11)
+        transport.failWith = nil
+        await uploader.flush()                          // succeeds -> failureCount back to 0
+        #expect(uploader.pendingCount == 0)
+
+        uploader.record(.parseFailed)
+        transport.failWith = Down()
+        await uploader.flush()                          // fail again at t=11
+        // reset    -> failureCount 1, window = base  10 s (t=11 -> 21)
+        // not reset -> failureCount 2, window = base*2 20 s (t=11 -> 31)
+
+        clock = Date(timeIntervalSince1970: 25)
+        transport.failWith = nil
+        await uploader.flush()
+
+        #expect(uploader.pendingCount == 0)             // 25 >= 21: the window was the base delay
+        #expect(transport.sentBodies.count == 2)        // both successful sends landed
+    }
+
+    @Test("record auto-flushes once a full batch has accumulated")
+    func recordAutoFlushesAtBatchSize() async {
+        let (uploader, transport, _) = makeUploader(config: .init(batchSize: 3))
+        uploader.record(.setLogged)
+        uploader.record(.setLogged)
+        #expect(transport.sendCount == 0)              // below the batch threshold
+        uploader.record(.setLogged)                    // hits batchSize -> schedules a flush
+        // Spin on the post-condition, not on sendCount: the detached flush
+        // bumps sendCount *inside* send(), then drains the queue after the
+        // await returns. Waiting on sendCount can resume this test between
+        // those two steps, with pendingCount still full.
+        for _ in 0..<1_000 where uploader.pendingCount != 0 { await Task.yield() }
+        #expect(transport.sendCount == 1)
+        #expect(uploader.pendingCount == 0)
+    }
+
+    @Test("a permanent transport rejection drops the batch instead of retrying it forever")
+    func permanentRejectionDropsBatchAndKeepsDraining() async {
+        let (uploader, transport, store) = makeUploader(config: .init(batchSize: 2))
+        transport.failWith = TelemetryTransportError.permanent(statusCode: 413)
+        for _ in 0..<4 { uploader.record(.setLogged) }   // two batches
+
+        await uploader.flush()
+
+        #expect(transport.sendCount == 2)               // both batches attempted...
+        #expect(uploader.pendingCount == 0)             // ...and both dropped, not retained
+        #expect(store.load().pending.isEmpty)
+    }
+
+    @Test("a permanent drop clears the carried-over failure state, so the next batch is not given up on early")
+    func permanentDropResetsFailureState() async {
+        struct Down: Error {}
+        let clock = Date(timeIntervalSince1970: 0)
+        let transport = SpyTelemetryTransport()
+        transport.failWith = Down()
+        let (uploader, _, store) = makeUploader(
+            transport: transport,
+            config: .init(batchSize: 2, baseRetryDelay: 0, maxConsecutiveFailures: 3),
+            now: { clock }
+        )
+        for _ in 0..<2 { uploader.record(.setLogged) }   // one batch, A
+
+        await uploader.flush()                            // A fails, failureCount 1
+        await uploader.flush()                            // A fails, failureCount 2
+
+        transport.failWith = TelemetryTransportError.permanent(statusCode: 400)
+        await uploader.flush()                            // A permanently rejected -> dropped
+        #expect(uploader.pendingCount == 0)
+
+        // A drove failureCount to 2 of 3. If the permanent drop had NOT reset it
+        // (like a success does), the first failure on the next batch would be the
+        // 3rd consecutive one and that batch would be dropped too.
+        for _ in 0..<2 { uploader.record(.setLogged) }   // batch C
+        transport.failWith = Down()
+        await uploader.flush()                            // C fails once -> failureCount back to 1
+        #expect(uploader.pendingCount == 2)              // C retained, not given up on
+        #expect(store.load().pending.count == 2)
+    }
+
+    @Test("the queue makes progress after maxConsecutiveFailures unclassified failures")
+    func givesUpOnAWedgedBatch() async {
+        struct Down: Error {}
+        var clock = Date(timeIntervalSince1970: 0)
+        let transport = SpyTelemetryTransport()
+        transport.failWith = Down()
+        let (uploader, _, store) = makeUploader(
+            transport: transport,
+            config: .init(batchSize: 2, baseRetryDelay: 0, maxConsecutiveFailures: 3),
+            now: { clock }
+        )
+        for _ in 0..<4 { uploader.record(.setLogged) }   // batch A + batch B
+
+        await uploader.flush()                            // fail 1
+        await uploader.flush()                            // fail 2
+        #expect(uploader.pendingCount == 4)              // still wedged
+        await uploader.flush()                            // fail 3 -> drop head batch A
+
+        #expect(uploader.pendingCount == 2)              // batch B survives, queue unblocked
+        #expect(store.load().pending.count == 2)
+        clock = Date(timeIntervalSince1970: 1)
+        transport.failWith = nil
+        await uploader.flush()
+        #expect(uploader.pendingCount == 0)              // B now drains
     }
 
     @Test("discardPending clears queued events but keeps the install id")
