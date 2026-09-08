@@ -9,6 +9,23 @@ final class FileTelemetryQueueStore: TelemetryQueueStore {
 
     init(url: URL = URL.applicationSupportDirectory.appending(path: "telemetry-queue.json")) {
         self.url = url
+
+        let directory = url.deletingLastPathComponent()
+
+        // Application Support is not guaranteed to exist on a first launch, and
+        // `Data.write` will not create it — make it now, so `save` can't
+        // silently drop the queue on the floor.
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+
+        // One-time cleanup: the pre-uploader sink wrote `telemetry.json` beside
+        // this file. It is dead since the switch to the queue store — remove the
+        // orphan so it doesn't linger on devices upgraded across the rename.
+        let legacySinkFile = directory.appending(path: "telemetry.json")
+        if FileManager.default.fileExists(atPath: legacySinkFile.path) {
+            try? FileManager.default.removeItem(at: legacySinkFile)
+        }
     }
 
     func load() -> TelemetryQueueState {
