@@ -5,6 +5,15 @@ import Foundation
 /// a hard cap, and opt-out discard. It is a `TelemetrySink`, so the recorder
 /// forwards straight to it. `record(_:)` only touches local state — the
 /// logging loop never waits on the network (`PRODUCT.md`).
+///
+/// `TelemetrySink` is a non-isolated protocol (its other conformers — the
+/// no-op sink and the test fake — hold no actor state). The `@MainActor
+/// TelemetrySink` spelling below is a deliberate *isolated conformance*: the
+/// type keeps its `@MainActor` isolation and the compiler confines the
+/// conformance to the main actor, which is where the recorder already calls
+/// it. Drop the isolated spelling and the conformance would have to be
+/// `nonisolated`, forcing `record(_:)` to hop off the actor and reopening the
+/// data race the isolation is here to prevent.
 @MainActor
 public final class TelemetryUploader: @MainActor TelemetrySink {
 

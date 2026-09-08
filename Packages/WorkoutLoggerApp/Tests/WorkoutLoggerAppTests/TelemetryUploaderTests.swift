@@ -19,6 +19,13 @@ struct TelemetryUploaderTests {
         #expect(try JSONDecoder().decode(TelemetryQueueState.self, from: data) == state)
     }
 
+    @Test("a fresh in-memory queue store loads an empty queue with a minted install id")
+    func inMemoryStoreStartsEmpty() {
+        let fresh = InMemoryTelemetryQueueStore().load()
+        #expect(fresh.pending.isEmpty)
+        #expect(!fresh.installID.isEmpty)   // TelemetryQueueState() mints one by default
+    }
+
     @Test("the in-memory queue store returns what was last saved")
     func inMemoryStoreRoundTrips() {
         let store = InMemoryTelemetryQueueStore()
@@ -246,6 +253,40 @@ struct TelemetryUploaderTests {
         #expect(transport.sendCount == 3)
     }
 
+    @Test("a successful send resets the failure count so the next failure backs off from the base delay, not a doubled one")
+    func successResetsFailureCount() async {
+        var clock = Date(timeIntervalSince1970: 0)
+        let transport = SpyTelemetryTransport()
+        struct Down: Error {}
+        transport.failWith = Down()
+        let (uploader, _, _) = makeUploader(
+            transport: transport,
+            config: .init(batchSize: 1, baseRetryDelay: 10, maxRetryDelay: 3600),
+            now: { clock }
+        )
+
+        uploader.record(.setLogged)
+        await uploader.flush()                          // fail 1 -> window 10 s (t=0 -> 10)
+
+        clock = Date(timeIntervalSince1970: 11)
+        transport.failWith = nil
+        await uploader.flush()                          // succeeds -> failureCount back to 0
+        #expect(uploader.pendingCount == 0)
+
+        uploader.record(.parseFailed)
+        transport.failWith = Down()
+        await uploader.flush()                          // fail again at t=11
+        // reset    -> failureCount 1, window = base  10 s (t=11 -> 21)
+        // not reset -> failureCount 2, window = base*2 20 s (t=11 -> 31)
+
+        clock = Date(timeIntervalSince1970: 25)
+        transport.failWith = nil
+        await uploader.flush()
+
+        #expect(uploader.pendingCount == 0)             // 25 >= 21: the window was the base delay
+        #expect(transport.sentBodies.count == 2)        // both successful sends landed
+    }
+
     @Test("record auto-flushes once a full batch has accumulated")
     func recordAutoFlushesAtBatchSize() async {
         let (uploader, transport, _) = makeUploader(config: .init(batchSize: 3))
@@ -253,7 +294,11 @@ struct TelemetryUploaderTests {
         uploader.record(.setLogged)
         #expect(transport.sendCount == 0)              // below the batch threshold
         uploader.record(.setLogged)                    // hits batchSize -> schedules a flush
-        for _ in 0..<20 where transport.sendCount == 0 { await Task.yield() }
+        // Spin on the post-condition, not on sendCount: the detached flush
+        // bumps sendCount *inside* send(), then drains the queue after the
+        // await returns. Waiting on sendCount can resume this test between
+        // those two steps, with pendingCount still full.
+        for _ in 0..<1_000 where uploader.pendingCount != 0 { await Task.yield() }
         #expect(transport.sendCount == 1)
         #expect(uploader.pendingCount == 0)
     }
