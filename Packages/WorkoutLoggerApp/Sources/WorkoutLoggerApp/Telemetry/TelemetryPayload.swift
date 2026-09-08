@@ -7,7 +7,9 @@ public struct TelemetryPayload: Codable, Equatable, Sendable {
     public let installID: String
     public let events: [TelemetryEventPayload]
 
-    public init(installID: String, events: [TelemetryEventPayload]) {
+    /// Intentionally not `public`: `TelemetryUploader` is the only builder.
+    /// Outside the module a payload can only be *decoded*, never hand-made.
+    init(installID: String, events: [TelemetryEventPayload]) {
         self.installID = installID
         self.events = events
     }
@@ -22,14 +24,16 @@ public struct TelemetryPayload: Codable, Equatable, Sendable {
 /// count, a fixed bucket/feature spelling. There is no field that can hold a
 /// load, an exercise name, or a transcript. `nil` fields are omitted.
 public struct TelemetryEventPayload: Codable, Equatable, Sendable {
-    public var kind: String
-    public var totalSets: Int?
-    public var workingSets: Int?
-    public var durationBucket: String?
-    public var feature: String?
-    public var latencyBucketMillis: Int?
+    public let kind: String
+    public let totalSets: Int?
+    public let workingSets: Int?
+    public let durationBucket: String?
+    public let feature: String?
+    public let latencyBucketMillis: Int?
 
-    public init(
+    /// Not `public`: `TelemetryPayloadCodec` is the only builder, so every
+    /// value on the wire comes from its exhaustive, reviewed switch.
+    init(
         kind: String,
         totalSets: Int? = nil,
         workingSets: Int? = nil,
