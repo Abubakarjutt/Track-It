@@ -19,9 +19,11 @@ final class FileTelemetryQueueStore: TelemetryQueueStore {
             at: directory, withIntermediateDirectories: true
         )
 
-        // One-time cleanup: the pre-uploader sink wrote `telemetry.json` beside
+        // Legacy cleanup: the pre-uploader sink wrote `telemetry.json` beside
         // this file. It is dead since the switch to the queue store — remove the
         // orphan so it doesn't linger on devices upgraded across the rename.
+        // Cheap enough to re-check every launch; the `fileExists` guard means it
+        // does real work only once, on the first launch after the upgrade.
         let legacySinkFile = directory.appending(path: "telemetry.json")
         if FileManager.default.fileExists(atPath: legacySinkFile.path) {
             try? FileManager.default.removeItem(at: legacySinkFile)

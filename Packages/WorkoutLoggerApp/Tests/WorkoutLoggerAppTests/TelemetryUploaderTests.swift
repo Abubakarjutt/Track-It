@@ -261,7 +261,10 @@ struct TelemetryUploaderTests {
         transport.failWith = Down()
         let (uploader, _, _) = makeUploader(
             transport: transport,
-            config: .init(batchSize: 1, baseRetryDelay: 10, maxRetryDelay: 3600),
+            // batchSize 10 with one event per record keeps `record` from
+            // scheduling its own detached flush, so each flush below is the
+            // explicit one this test drives.
+            config: .init(batchSize: 10, baseRetryDelay: 10, maxRetryDelay: 3600),
             now: { clock }
         )
 
@@ -314,6 +317,36 @@ struct TelemetryUploaderTests {
         #expect(transport.sendCount == 2)               // both batches attempted...
         #expect(uploader.pendingCount == 0)             // ...and both dropped, not retained
         #expect(store.load().pending.isEmpty)
+    }
+
+    @Test("a permanent drop clears the carried-over failure state, so the next batch is not given up on early")
+    func permanentDropResetsFailureState() async {
+        struct Down: Error {}
+        let clock = Date(timeIntervalSince1970: 0)
+        let transport = SpyTelemetryTransport()
+        transport.failWith = Down()
+        let (uploader, _, store) = makeUploader(
+            transport: transport,
+            config: .init(batchSize: 2, baseRetryDelay: 0, maxConsecutiveFailures: 3),
+            now: { clock }
+        )
+        for _ in 0..<2 { uploader.record(.setLogged) }   // one batch, A
+
+        await uploader.flush()                            // A fails, failureCount 1
+        await uploader.flush()                            // A fails, failureCount 2
+
+        transport.failWith = TelemetryTransportError.permanent(statusCode: 400)
+        await uploader.flush()                            // A permanently rejected -> dropped
+        #expect(uploader.pendingCount == 0)
+
+        // A drove failureCount to 2 of 3. If the permanent drop had NOT reset it
+        // (like a success does), the first failure on the next batch would be the
+        // 3rd consecutive one and that batch would be dropped too.
+        for _ in 0..<2 { uploader.record(.setLogged) }   // batch C
+        transport.failWith = Down()
+        await uploader.flush()                            // C fails once -> failureCount back to 1
+        #expect(uploader.pendingCount == 2)              // C retained, not given up on
+        #expect(store.load().pending.count == 2)
     }
 
     @Test("the queue makes progress after maxConsecutiveFailures unclassified failures")

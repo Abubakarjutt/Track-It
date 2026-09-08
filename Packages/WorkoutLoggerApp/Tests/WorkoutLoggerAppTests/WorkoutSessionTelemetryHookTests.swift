@@ -213,8 +213,10 @@ struct WorkoutSessionTelemetryHookTests {
     func endUtteranceThrowEmitsNoLatency() async throws {
         let rig = try makeRig(transcriptSource: FailingTranscriptSource())
         await say(rig)
-        // released() bails in its catch before apply(), so not one event fires.
+        // released() bails in its catch before apply(), so not one event fires
+        // and no transcript is routed for review — there was no transcript.
         #expect(rig.events.events.isEmpty)
+        #expect(rig.unresolved.captured.isEmpty)
     }
 
     @Test("setLogged still fires exactly once per set alongside the latency event")

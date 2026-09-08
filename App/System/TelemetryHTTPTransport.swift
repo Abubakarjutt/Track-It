@@ -17,6 +17,11 @@ struct TelemetryHTTPTransport: TelemetryTransport {
     static let defaultEndpoint = URL(string: "https://telemetry.trackit.abubakarsahi.com/v1/events")!
 
     /// 4xx codes that will not change on retry — drop the batch.
+    /// Deliberately excludes 401/403: an auth failure is a client-config
+    /// problem the operator can fix, so it stays transient and keeps retrying
+    /// rather than silently discarding events. 413 is safe here only because
+    /// the uploader never shrinks a batch — if it ever splits oversized
+    /// batches, 413 must move out of this set.
     private static let permanentStatusCodes: Set<Int> = [400, 404, 413, 422]
 
     let endpoint: URL
