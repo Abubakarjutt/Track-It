@@ -34,6 +34,20 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
             maxRetryDelay: TimeInterval = 3600,
             maxConsecutiveFailures: Int = 10
         ) {
+            // These are a programmer contract, not runtime input — the type is
+            // `public` so a caller *could* pass nonsense. A non-positive
+            // `batchSize` traps `flush`'s `prefix(batchSize)`; a non-positive
+            // `maxConsecutiveFailures` makes the give-up backstop fire on the
+            // first failure, silently disabling retry; a non-positive cap trims
+            // every event on the next `record`. Fail loudly here.
+            // (`maxQueuedEvents < batchSize` is fine — `prefix` just returns the
+            // short queue — so it is deliberately not constrained.)
+            precondition(batchSize > 0, "batchSize must be positive")
+            precondition(maxQueuedEvents > 0, "maxQueuedEvents must be positive")
+            precondition(maxConsecutiveFailures > 0, "maxConsecutiveFailures must be positive")
+            precondition(baseRetryDelay >= 0, "baseRetryDelay must not be negative")
+            precondition(maxRetryDelay >= baseRetryDelay, "maxRetryDelay must not be below baseRetryDelay")
+
             self.batchSize = batchSize
             self.maxQueuedEvents = maxQueuedEvents
             self.baseRetryDelay = baseRetryDelay
@@ -82,9 +96,10 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
     // MARK: TelemetrySink
 
     public func record(_ event: TelemetryEvent) {
+        let recordedAt = now()
         state.pending.append(QueuedEvent(
             event: TelemetryPayloadCodec.payload(for: event),
-            recordedAt: now()
+            recordedAt: recordedAt
         ))
         if state.pending.count > config.maxQueuedEvents {
             state.pending.removeFirst(state.pending.count - config.maxQueuedEvents)
@@ -92,15 +107,17 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
         }
         queueStore.save(state)
 
-        // Size trigger (spec 5b): once a whole batch has accumulated, try to
-        // send it now rather than waiting for the next foreground. The detached
-        // flush is re-entrancy-guarded and back-off-gated; the extra conditions
-        // here just keep it from spawning a Task that would immediately no-op
-        // (queue saturated at cap, or a back-off window still open).
+        // Size trigger (spec 5b): once at least a batch has accumulated, try to
+        // send now rather than waiting for the next foreground. Not gated on an
+        // exact multiple of `batchSize` — a short trailing batch left behind by
+        // a partial drain still sits above the threshold, so the next `record`
+        // re-triggers it once the back-off window closes. The detached flush is
+        // re-entrancy-guarded and back-off-gated; the guards here only keep it
+        // from spawning a Task that would immediately no-op (already flushing,
+        // or a back-off window still open).
         if state.pending.count >= config.batchSize,
-           state.pending.count % config.batchSize == 0,
            !isFlushing,
-           now() >= nextAttemptAt {
+           recordedAt >= nextAttemptAt {
             Task { await self.flush() }
         }
     }
@@ -163,6 +180,12 @@ public final class TelemetryUploader: @MainActor TelemetrySink {
     /// (opt-out) and the `record(_:)` cap-trim both move or clear the head and
     /// bump `queueGeneration`; a blind `removeFirst` then trims unsent events,
     /// or traps on an emptied queue.
+    ///
+    /// On a generation mismatch after a *successful* send, the delivered events
+    /// stay queued and the next drain re-sends the surviving overlap — an
+    /// at-least-once delivery window. It is only reachable when the cap-trim
+    /// fires mid-send (queue pinned at `maxQueuedEvents`), the payload is
+    /// content-free, and the alternative — trusting a moved head — is worse.
     private func dropFromHead(_ batch: [QueuedEvent], generation: Int) {
         guard generation == queueGeneration else { return }
         state.pending.removeFirst(batch.count)

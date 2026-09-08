@@ -13,8 +13,11 @@ final class FileTelemetryQueueStore: TelemetryQueueStore {
         let directory = url.deletingLastPathComponent()
 
         // Application Support is not guaranteed to exist on a first launch, and
-        // `Data.write` will not create it — make it now, so `save` can't
-        // silently drop the queue on the floor.
+        // `Data.write` will not create it — make it now so a first-launch `save`
+        // isn't dropped for a missing directory. Best-effort (`try?`): a real
+        // failure here (permissions, full disk) still surfaces only as `save`
+        // silently no-op'ing, which is the existing contract for an unwritable
+        // store.
         try? FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true
         )
