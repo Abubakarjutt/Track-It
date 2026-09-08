@@ -1,7 +1,12 @@
 // Domain types for the voice workout logger. Vocabulary follows CONTEXT.md.
 
 /// A movement in the app's library, e.g. "Barbell Bench Press".
-public struct Exercise: Equatable, Sendable, Codable {
+///
+/// `Hashable`/`Equatable` over the whole value (name *and* aliases), not the name
+/// alone, so two library exercises that merely share a display name never collide
+/// in a value-keyed map — the stringly-typed-keying hazard the engine's per-
+/// exercise state used to carry.
+public struct Exercise: Equatable, Hashable, Sendable, Codable {
     public let name: String
     /// Alternative spoken names that resolve to this exercise, e.g. "OHP".
     public let aliases: [String]
@@ -104,7 +109,7 @@ public enum ExerciseResolution: Equatable, Sendable {
 /// each `ParsedSet` to the active exercise, and repeat-to-retry compares against
 /// `previousSet`. They are carried here so the seam does not change shape when
 /// that logic lands.
-public struct WorkoutContext: Sendable {
+public struct WorkoutContext: Equatable, Sendable {
     public var activeExercise: Exercise?
     public var previousSet: ParsedSet?
     public var unit: MassUnit

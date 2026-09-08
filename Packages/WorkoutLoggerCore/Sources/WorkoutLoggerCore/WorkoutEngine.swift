@@ -151,14 +151,26 @@ public final class WorkoutEngine {
     /// When the current rest period began — the last set's time, or when
     /// `start rest` was said — or `nil` when no rest is running.
     public private(set) var restStartedAt: Date?
+    /// The `WorkoutContext` the most recent `hear(_:)` parsed against — the active
+    /// exercise and that exercise's previous set (1b). Exposed so a caller can
+    /// observe that the context is populated, not `nil`, after a set.
+    public private(set) var lastParsingContext = WorkoutContext()
 
     private let store: WorkoutStore
     private var library: ExerciseLibrary
-    /// Best estimated 1RM per exercise (by name) known *before* this workout —
-    /// seeded from history. The bar a set must clear to be a personal record.
+    /// Best estimated 1RM per exercise captured at launch — the fallback seed when
+    /// no `knownBestsProvider` is injected.
     private let knownBests: [String: Double]
-    /// Running best estimated 1RM per exercise: `knownBests` plus anything beaten
-    /// so far this workout.
+    /// A live source of pre-workout bests, injected so a later workout in the same
+    /// app run re-seeds from up-to-date history rather than a launch-captured value.
+    /// `nil` keeps the launch-time `knownBests` seed.
+    private let knownBestsProvider: (@Sendable () -> [String: Double])?
+    /// The pre-workout PR-bar floor for the workout in progress: `seededBests()`
+    /// snapshotted when it opened. `recomputeBest` folds this workout's sets over
+    /// this, so a correction cannot rebase the bar onto a different (stale) seed.
+    private var workoutBestsSeed: [String: Double] = [:]
+    /// Running best estimated 1RM per exercise: `workoutBestsSeed` plus anything
+    /// beaten so far this workout.
     private var bestOneRepMax: [String: Double] = [:]
     /// The user's kg/lb preference — the default unit for a set with no spoken unit.
     private var unit: MassUnit
@@ -193,12 +205,14 @@ public final class WorkoutEngine {
         unit: MassUnit = .kilograms,
         knownBests: [String: Double] = [:],
         restTarget: TimeInterval = WorkoutEngine.defaultRestTargetSeconds,
+        knownBestsProvider: (@Sendable () -> [String: Double])? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.library = library
         self.unit = unit
         self.knownBests = knownBests
+        self.knownBestsProvider = knownBestsProvider
         self.restTarget = restTarget
         self.now = now
     }
@@ -224,6 +238,13 @@ public final class WorkoutEngine {
         return elapsed >= currentRestTargetSeconds
     }
 
+    /// The pre-workout bests to seed the PR bar with: the live provider's view of
+    /// history when one is injected (so a later workout in the same app run sees an
+    /// earlier workout's records), else the launch-time `knownBests` seed.
+    private func seededBests() -> [String: Double] {
+        knownBestsProvider?() ?? knownBests
+    }
+
     /// Opens a fresh workout and persists it. If a workout is still in progress
     /// (the user forgot to say "end workout"), it is closed and persisted first
     /// so it stays a completed workout rather than being silently abandoned.
@@ -238,7 +259,8 @@ public final class WorkoutEngine {
         templateRestTargets = [:]
         restStartedAt = nil
         personalRecords = []
-        bestOneRepMax = knownBests
+        workoutBestsSeed = seededBests()
+        bestOneRepMax = workoutBestsSeed
         store.save(workout)
     }
 
@@ -260,8 +282,8 @@ public final class WorkoutEngine {
     /// New sets attach to the workout's last entry. The rest timer starts fresh
     /// (a rest period from before the app was killed is meaningless). No
     /// `PersonalRecord` is re-announced for work already in the record — but the
-    /// PR bar is seeded from `knownBests` folded with that work, so a set logged
-    /// after resuming is a record only if it beats both history and this session.
+    /// PR bar is seeded from `seededBests()` folded with that work, so a set logged
+    /// after resuming is a record only if it beats both history and this workout.
     ///
     /// Precondition: no workout is already open. The only caller is the launch
     /// composition root, before any `startWorkout`. Unlike `startWorkout()` this
@@ -282,7 +304,8 @@ public final class WorkoutEngine {
         templateRestTargets = [:]
         restStartedAt = nil
 
-        var best = knownBests
+        workoutBestsSeed = seededBests()
+        var best = workoutBestsSeed
         for entry in workout.entries {
             for set in entry.sets where set.role == .working {
                 guard let load = set.loadKilograms, let reps = set.reps else { continue }
@@ -370,7 +393,16 @@ public final class WorkoutEngine {
     /// parser result to the workout in progress.
     public func hear(_ hypotheses: [String]) {
         let transcript = postProcess(hypotheses, library: library)
-        for result in parse(transcript, context: WorkoutContext(unit: unit), library: library) {
+        // Feed the active exercise and its most recent set so a grammar that leans
+        // on the previous set (a tighter repeat-to-retry tolerance, relative
+        // phrasing) can resolve against real context rather than an empty seam.
+        let context = WorkoutContext(
+            activeExercise: activeExercise,
+            previousSet: activePreviousParsedSet,
+            unit: unit
+        )
+        lastParsingContext = context
+        for result in parse(transcript, context: context, library: library) {
             switch result {
             case .command(.startWorkout):        startWorkout()
             case .command(.endWorkout):          endWorkout()
@@ -400,14 +432,58 @@ public final class WorkoutEngine {
         return workout
     }
 
-    /// The name of the exercise sets currently attach to, or `nil` before the
-    /// first announcement (or once the workout is closed). Keyed on for
-    /// per-exercise template rest targets.
-    private var activeExerciseName: String? {
+    /// The entry sets currently attach to, or `nil` before the first announcement
+    /// (or once the workout is closed). The single bounds-checked derivation the
+    /// active-exercise and previous-set accessors below all read from.
+    private var activeEntry: Entry? {
         guard let index = activeEntryIndex,
               let entries = openWorkout?.entries, entries.indices.contains(index)
         else { return nil }
-        return entries[index].exercise.name
+        return entries[index]
+    }
+
+    /// The name of the exercise sets currently attach to, or `nil`. Keyed on for
+    /// per-exercise template rest targets.
+    private var activeExerciseName: String? {
+        activeEntry?.exercise.name
+    }
+
+    /// The exercise sets currently attach to, or `nil` — the `activeExercise`
+    /// half of the parser context (1b).
+    private var activeExercise: Exercise? {
+        activeEntry?.exercise
+    }
+
+    /// The last set on the active entry, rebuilt as a `ParsedSet` — the
+    /// `previousSet` half of the context a grammar can lean on (1b). `nil` when no
+    /// entry is active or it holds no sets yet. Load is un-canonicalised from the
+    /// kilogram store back into the engine's current default unit; the unit the
+    /// set was actually spoken in is not recoverable, and `grouping` is whatever
+    /// was stored (which may be `.superset`, a shape the parser never emits).
+    private var activePreviousParsedSet: ParsedSet? {
+        guard let logged = activeEntry?.sets.last else { return nil }
+        return ParsedSet(
+            loadType: logged.loadType,
+            effort: logged.effort,
+            role: logged.role,
+            grouping: logged.grouping,
+            load: logged.loadKilograms.map { displayUnitLoad($0) },
+            loadUnit: logged.loadKilograms == nil ? nil : unit,
+            reps: logged.reps,
+            durationSeconds: logged.durationSeconds,
+            distanceMeters: logged.distanceMeters
+        )
+    }
+
+    /// Converts a stored kilogram load back into the engine's current default
+    /// unit, so a load in the parser context is the number the lifter would see.
+    private func displayUnitLoad(_ kilograms: Double) -> Double {
+        switch unit {
+        case .kilograms:
+            return kilograms
+        case .pounds:
+            return kilograms / poundsToKilograms
+        }
     }
 
     /// Makes `exercise` the active entry: resumes its existing entry if the
@@ -475,7 +551,7 @@ public final class WorkoutEngine {
         let sets = (workout?.entries ?? []).lazy
             .filter { $0.exercise == exercise }
             .flatMap(\.sets)
-        bestOneRepMax[exercise.name] = sets.reduce(knownBests[exercise.name] ?? 0) { best, set in
+        bestOneRepMax[exercise.name] = sets.reduce(workoutBestsSeed[exercise.name] ?? 0) { best, set in
             guard set.role == .working, let load = set.loadKilograms, let reps = set.reps
             else { return best }
             return max(best, estimatedOneRepMax(loadKilograms: load, reps: reps))
