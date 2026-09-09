@@ -173,20 +173,22 @@ public final class WorkoutEngine {
     private let store: WorkoutStore
     private var library: ExerciseLibrary
     /// Best estimated 1RM per exercise captured at launch — the fallback seed when
-    /// no `knownBestsProvider` is injected.
-    private let knownBests: [String: Double]
+    /// no `knownBestsProvider` is injected. Keyed on the whole `Exercise` value
+    /// (1d): two library entries that share a display name but differ in aliases
+    /// keep separate bars instead of colliding on the name.
+    private let knownBests: [Exercise: Double]
     /// A live source of pre-workout bests, injected so a later workout in the same
     /// app run re-seeds from up-to-date history rather than a launch-captured value.
     /// `nil` keeps the launch-time `knownBests` seed. Not `@Sendable` — like `now`,
     /// it is read only from the engine's owning actor.
-    private let knownBestsProvider: (() -> [String: Double])?
+    private let knownBestsProvider: (() -> [Exercise: Double])?
     /// The pre-workout PR-bar floor for the workout in progress: `seededBests()`
     /// snapshotted when it opened. `recomputeBest` folds this workout's sets over
     /// this, so a correction cannot rebase the bar onto a different (stale) seed.
-    private var workoutBestsSeed: [String: Double] = [:]
+    private var workoutBestsSeed: [Exercise: Double] = [:]
     /// Running best estimated 1RM per exercise: `workoutBestsSeed` plus anything
     /// beaten so far this workout.
-    private var bestOneRepMax: [String: Double] = [:]
+    private var bestOneRepMax: [Exercise: Double] = [:]
     /// The user's kg/lb preference — the default unit for a set with no spoken unit.
     private var unit: MassUnit
     /// The count-up rest timer's target — the rest period a template does not override.
@@ -209,18 +211,22 @@ public final class WorkoutEngine {
     /// Cleared by any announcement, `undo`, or a new workout — the spec's "before
     /// any intervening set" made concrete.
     private var retryTarget: LoggedSet?
-    /// Per-exercise (by name) rest targets armed by `startWorkout(from:)`. The
-    /// active exercise's entry here overrides `restTarget`. Empty for a workout
-    /// not started from a template, or one whose template set no rest targets.
-    private var templateRestTargets: [String: TimeInterval] = [:]
+    /// Per-exercise rest targets armed by `startWorkout(from:)`, keyed on the whole
+    /// `Exercise` value (1d). The active exercise's entry here overrides
+    /// `restTarget`. Empty for a workout not started from a template, or one whose
+    /// template set no rest targets. Both the key (`template.item.exercise`) and
+    /// the lookup value (`activeExercise`, library-resolved) come from the same
+    /// library today, so they compare equal; if template persistence is ever
+    /// added, alias drift between the two could silently fall back to `restTarget`.
+    private var templateRestTargets: [Exercise: TimeInterval] = [:]
 
     public init(
         store: WorkoutStore,
         library: ExerciseLibrary,
         unit: MassUnit = .kilograms,
-        knownBests: [String: Double] = [:],
+        knownBests: [Exercise: Double] = [:],
         restTarget: TimeInterval = WorkoutEngine.defaultRestTargetSeconds,
-        knownBestsProvider: (() -> [String: Double])? = nil,
+        knownBestsProvider: (() -> [Exercise: Double])? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
@@ -241,7 +247,7 @@ public final class WorkoutEngine {
     /// template value if `startWorkout(from:)` set one, otherwise the engine
     /// default. A HUD can show it; `isRestTargetReached` measures against it.
     public var currentRestTargetSeconds: TimeInterval {
-        guard let active = activeExerciseName, let armed = templateRestTargets[active]
+        guard let active = activeExercise, let armed = templateRestTargets[active]
         else { return restTarget }
         return armed
     }
@@ -256,7 +262,7 @@ public final class WorkoutEngine {
     /// The pre-workout bests to seed the PR bar with: the live provider's view of
     /// history when one is injected (so a later workout in the same app run sees an
     /// earlier workout's records), else the launch-time `knownBests` seed.
-    private func seededBests() -> [String: Double] {
+    private func seededBests() -> [Exercise: Double] {
         knownBestsProvider?() ?? knownBests
     }
 
@@ -274,7 +280,7 @@ public final class WorkoutEngine {
         startWorkout(templateName: trimmed.isEmpty ? nil : trimmed)
         templateRestTargets = Dictionary(
             template.items.compactMap { item in
-                item.restTargetSeconds.map { (item.exercise.name, $0) }
+                item.restTargetSeconds.map { (item.exercise, $0) }
             },
             uniquingKeysWith: { _, last in last }
         )
@@ -333,7 +339,7 @@ public final class WorkoutEngine {
             for set in entry.sets where set.role == .working {
                 guard let load = set.loadKilograms, let reps = set.reps else { continue }
                 let e1rm = estimatedOneRepMax(loadKilograms: load, reps: reps)
-                best[entry.exercise.name] = max(best[entry.exercise.name] ?? 0, e1rm)
+                best[entry.exercise] = max(best[entry.exercise] ?? 0, e1rm)
             }
         }
         bestOneRepMax = best
@@ -381,15 +387,15 @@ public final class WorkoutEngine {
               current.entries[entryIndex].sets.indices.contains(setIndex)
         else { return }
         let exercise = current.entries[entryIndex].exercise
-        let activeName = activeExerciseName
+        let active = activeExercise
 
         mutate { $0 = $0.removingSet(at: entryIndex, setIndex) }
 
         retryTarget = nil
         recomputeBest(for: exercise)
 
-        if let activeName,
-           let restored = workout?.entries.firstIndex(where: { $0.exercise.name == activeName }) {
+        if let active,
+           let restored = workout?.entries.firstIndex(where: { $0.exercise == active }) {
             activeEntryIndex = restored
         } else {
             activeEntryIndex = workout?.entries.indices.last
@@ -465,14 +471,9 @@ public final class WorkoutEngine {
         return entries[index]
     }
 
-    /// The name of the exercise sets currently attach to, or `nil`. Keyed on for
-    /// per-exercise template rest targets.
-    private var activeExerciseName: String? {
-        activeEntry?.exercise.name
-    }
-
     /// The exercise sets currently attach to, or `nil` — the `activeExercise`
-    /// half of the parser context (1b).
+    /// half of the parser context (1b), the key into `templateRestTargets`, and
+    /// the value `removeSet` re-finds the active entry by after an edit (1d).
     private var activeExercise: Exercise? {
         activeEntry?.exercise
     }
@@ -557,8 +558,8 @@ public final class WorkoutEngine {
         guard set.role == .working, let load = set.loadKilograms, let reps = set.reps
         else { return }
         let e1rm = estimatedOneRepMax(loadKilograms: load, reps: reps)
-        guard e1rm > (bestOneRepMax[exercise.name] ?? 0) else { return }
-        bestOneRepMax[exercise.name] = e1rm
+        guard e1rm > (bestOneRepMax[exercise] ?? 0) else { return }
+        bestOneRepMax[exercise] = e1rm
         personalRecords.append(
             PersonalRecord(exercise: exercise, estimatedOneRepMaxKilograms: e1rm)
         )
@@ -574,7 +575,7 @@ public final class WorkoutEngine {
         let sets = (workout?.entries ?? []).lazy
             .filter { $0.exercise == exercise }
             .flatMap(\.sets)
-        bestOneRepMax[exercise.name] = sets.reduce(workoutBestsSeed[exercise.name] ?? 0) { best, set in
+        bestOneRepMax[exercise] = sets.reduce(workoutBestsSeed[exercise] ?? 0) { best, set in
             guard set.role == .working, let load = set.loadKilograms, let reps = set.reps
             else { return best }
             return max(best, estimatedOneRepMax(loadKilograms: load, reps: reps))

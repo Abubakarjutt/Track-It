@@ -36,11 +36,11 @@ extension Workout {
     /// the workout has none. If the move empties the source entry, the entry goes
     /// too (same rule as `removingSet`). Every field of the set is carried verbatim,
     /// including `grouping` and `supersetRunID` — un-grouping a moved set is a
-    /// separate `replacingSet` edit. An out-of-range index, or a `toExercise` whose
-    /// name matches the source entry's, is a no-op.
+    /// separate `replacingSet` edit. An out-of-range index, or a `toExercise` that
+    /// equals the source entry's exercise, is a no-op.
     public func movingSet(at entryIndex: Int, _ setIndex: Int, toExercise: Exercise) -> Workout {
         guard hasSet(at: entryIndex, setIndex) else { return self }
-        guard entries[entryIndex].exercise.name != toExercise.name else { return self }
+        guard entries[entryIndex].exercise != toExercise else { return self }
 
         var copy = self
         let moved = copy.entries[entryIndex].sets.remove(at: setIndex)
@@ -48,7 +48,7 @@ extension Workout {
             copy.entries.remove(at: entryIndex)
         }
 
-        if let target = copy.entries.firstIndex(where: { $0.exercise.name == toExercise.name }) {
+        if let target = copy.entries.firstIndex(where: { $0.exercise == toExercise }) {
             copy.entries[target].sets.append(moved)
         } else {
             copy.entries.append(Entry(exercise: toExercise, sets: [moved]))

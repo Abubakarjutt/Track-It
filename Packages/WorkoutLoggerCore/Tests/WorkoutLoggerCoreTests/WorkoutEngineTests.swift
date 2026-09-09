@@ -317,7 +317,7 @@ struct WorkoutEngineTests {
         let engine = WorkoutEngine(
             store: store,
             library: ExerciseLibrary([bench]),
-            knownBests: ["Bench": 100]
+            knownBests: [bench: 100]
         )
         engine.startWorkout()
         engine.hear(["bench"])
@@ -334,7 +334,7 @@ struct WorkoutEngineTests {
         let engine = WorkoutEngine(
             store: store,
             library: ExerciseLibrary([bench]),
-            knownBests: ["Bench": 50]
+            knownBests: [bench: 50]
         )
         engine.startWorkout()
         engine.hear(["bench"])
@@ -350,7 +350,7 @@ struct WorkoutEngineTests {
         let engine = WorkoutEngine(
             store: store,
             library: ExerciseLibrary([bench]),
-            knownBests: ["Bench": 90]
+            knownBests: [bench: 90]
         )
         engine.startWorkout()
         engine.hear(["bench"])
@@ -369,7 +369,7 @@ struct WorkoutEngineTests {
         let engine = WorkoutEngine(
             store: store,
             library: ExerciseLibrary([bench]),
-            knownBests: ["Bench": 90]
+            knownBests: [bench: 90]
         )
         engine.startWorkout()
         engine.hear(["bench"])
@@ -380,6 +380,24 @@ struct WorkoutEngineTests {
         #expect(engine.workout?.entries.first?.sets.map(\.reps) == [9])
         #expect(engine.personalRecords.count == 1)
         #expect(engine.personalRecords.map(\.estimatedOneRepMaxKilograms) == [120])
+    }
+
+    // MARK: - Value-keyed per-exercise maps (cluster 1d)
+
+    @Test("same-name exercises with different aliases do not share a personal-record bar")
+    func personalRecordBarIsValueKeyed() {
+        let rowA = Exercise(name: "Row", aliases: ["barbell row"])
+        let rowB = Exercise(name: "Row", aliases: ["cable row"])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(
+            store: store,
+            library: ExerciseLibrary([rowA, rowB]),
+            knownBests: [rowA: 500]   // rowA carries an unbeatable historical bar
+        )
+        engine.startWorkout()
+        engine.hear(["cable row 100 for 5"]) // e1RM ≈ 116.7 — a PR for rowB, whose bar is 0
+
+        #expect(engine.personalRecords.map(\.exercise) == [rowB])
     }
 
     // MARK: - In-session re-seed of the PR bar (cluster 1a)
@@ -397,7 +415,7 @@ struct WorkoutEngineTests {
         let engine = WorkoutEngine(
             store: store,
             library: ExerciseLibrary([seededBench]),
-            knownBestsProvider: { ["Bench": best.value] }
+            knownBestsProvider: { [seededBench: best.value] }
         )
 
         engine.startWorkout()
@@ -427,7 +445,7 @@ struct WorkoutEngineTests {
         let engine = WorkoutEngine(
             store: store,
             library: ExerciseLibrary([seededBench]),
-            knownBestsProvider: { ["Bench": 150] }
+            knownBestsProvider: { [seededBench: 150] }
         )
 
         engine.startWorkout()

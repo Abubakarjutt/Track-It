@@ -90,7 +90,7 @@ struct TrackitApp: App {
             haptics: SystemHaptics(),
             library: library,
             unit: settingsStore.defaultUnit,
-            knownBestExercises: Set(knownBests.keys),
+            knownBestExercises: Set(knownBests.keys.map(\.name)),
             staleRecovery: staleRecovery,
             history: { store.history() },
             onWorkoutEnded: { workout in
@@ -132,16 +132,23 @@ struct TrackitApp: App {
         }
     }
 
-    /// Best estimated 1RM per exercise name across completed history — the PR bar
-    /// each exercise must clear this session.
-    static func knownBests(from history: [Workout]) -> [String: Double] {
-        var best: [String: Double] = [:]
+    /// Best estimated 1RM per exercise across completed history — the PR bar each
+    /// exercise must clear this app run. Keyed on the whole `Exercise` value (1d),
+    /// matching `WorkoutEngine`'s per-exercise maps.
+    ///
+    /// Keys come from persisted `Workout` entries; the engine looks them up with
+    /// library-resolved values. If a curated exercise's alias list changes between
+    /// releases the two stop comparing equal, so that exercise's bar seeds from 0
+    /// until the lifter sets a fresh PR — an accepted, self-healing discontinuity.
+    /// A stable `Exercise` identity field would remove it (deferred, cluster 2).
+    static func knownBests(from history: [Workout]) -> [Exercise: Double] {
+        var best: [Exercise: Double] = [:]
         for workout in history {
             for entry in workout.entries {
                 for set in entry.sets where set.role == .working {
                     guard let load = set.loadKilograms, let reps = set.reps else { continue }
                     let e1rm = estimatedOneRepMax(loadKilograms: load, reps: reps)
-                    best[entry.exercise.name] = max(best[entry.exercise.name] ?? 0, e1rm)
+                    best[entry.exercise] = max(best[entry.exercise] ?? 0, e1rm)
                 }
             }
         }
