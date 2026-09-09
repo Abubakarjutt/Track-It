@@ -21,4 +21,13 @@ final class HUDGlanceableStateUITests: XCTestCase {
         XCTAssertTrue(talk.waitForExistence(timeout: 5))
         XCTAssertTrue(talk.isHittable)
     }
+
+    func testAppLaunchesInPortrait() {
+        let app = launchPastOnboarding()
+        let window = app.windows.element(boundBy: 0)
+        XCTAssertTrue(window.waitForExistence(timeout: 5))
+        // trackit is portrait-locked (Info.plist UISupportedInterfaceOrientations);
+        // the key window must come up taller than it is wide and stay that way.
+        XCTAssertGreaterThan(window.frame.height, window.frame.width)
+    }
 }

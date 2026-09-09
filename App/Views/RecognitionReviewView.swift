@@ -13,11 +13,11 @@ struct RecognitionReviewView: View {
             if model.pendingUtterances.isEmpty {
                 ContentUnavailableView {
                     Label("No phrases queued", systemImage: "mic.slash")
-                 } description: {
-                  Text("Failed sets appear here when recognition review is on. "
+                } description: {
+                    Text("Failed sets appear here when recognition review is on. "
                         + "Submit a transcript to help, or discard it.")
-                  }
-              } else {
+                }
+            } else {
                 List(model.pendingUtterances) { utterance in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(utterance.transcript)
@@ -26,17 +26,16 @@ struct RecognitionReviewView: View {
                         HStack(spacing: 16) {
                             Button("Discard", role: .destructive) {
                                 model.discardPhrases([utterance])
-                              }
+                            }
                             Spacer()
                             Button("Submit") {
                                 model.submitPhrases([utterance])
-                              }
-                              .fontWeight(.semibold)
-                              }
-                          }
+                            }
+                            .fontWeight(.semibold)
                         }
                     }
                 }
+            }
         }
         .navigationTitle("Review Phrases")
         .navigationBarTitleDisplayMode(.inline)

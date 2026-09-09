@@ -54,7 +54,10 @@ final class SystemSpeechRecognizer: TranscriptSource {
             return
         }
 
-        SFSpeechRecognizer.requestAuthorization { _ in }
+        // `@Sendable` so Swift 6 does not infer this callback as main-actor-
+        // isolated (the enclosing type is `@MainActor`) and trap when the SDK
+        // runs it off-main. Fire-and-forget: the real gate is `SpeechAuthorization`.
+        SFSpeechRecognizer.requestAuthorization { @Sendable _ in }
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.record, mode: .measurement, options: .duckOthers)
         try? session.setActive(true, options: .notifyOthersOnDeactivation)

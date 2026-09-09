@@ -14,21 +14,19 @@ final class SystemHealthKitWorkoutStore: HealthKitWorkoutStore {
     private let store = HKHealthStore()
     public private(set) var lastWriteError: Error?
 
-     /// The two writable types trackit requests: a strength-training workout and
-     /// its active-energy figure.
-     private var writeTypes: [HKObjectType] {
-        [HKWorkoutType(.traditionalStrengthTraining, activityType: .functionalStrengthTraining),
-         HKQuantityType(.appleActiveEnergyBurned)]
-     }
+    /// The types trackit shares: a workout and its active-energy total.
+    private var shareTypes: Set<HKSampleType> {
+        [HKObjectType.workoutType(), HKQuantityType(.activeEnergyBurned)]
+    }
 
     var status: HealthKitSyncStatus {
         guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
-        switch store.authorizationStatus(forWrite: writeTypes) {
+        switch store.authorizationStatus(for: HKObjectType.workoutType()) {
         case .notDetermined:
             return .notDetermined
-        case .sharingAuthorized, .authorizeIfNeeded:
+        case .sharingAuthorized:
             return .authorized
-        case .denied, .restricted:
+        case .sharingDenied:
             return .denied
         @unknown default:
             return .notDetermined
@@ -36,36 +34,30 @@ final class SystemHealthKitWorkoutStore: HealthKitWorkoutStore {
      }
 
     func request() async {
-        await withCheckedContinuation { cont in
-            store.requestAuthorization(toWrite: writeTypes) { _ in cont.resume() }
-        }
+        try? await store.requestAuthorization(toShare: shareTypes, read: [])
      }
 
     func write(_ workout: Workout, activeEnergyKilocalories: Double) {
         let started = workout.startedAt
         guard let ended = workout.endedAt else { return }
 
-        let energy = HKQuantity(
-            unit: .kilocalorie(),
-            doubleValue: activeEnergyKilocalories
-        )
-        let workoutType: HKWorkoutType = .traditionalStrengthTraining(
-            activityType: .functionalStrengthTraining
-        )
+        let energy = HKQuantity(unit: .kilocalorie(), doubleValue: activeEnergyKilocalories)
+        // `HKWorkout.init` is soft-deprecated in favour of `HKWorkoutBuilder`; the
+        // builder is fully async and this adapter is a synchronous write-once
+        // seam, so the classic initializer stays until a builder migration is
+        // scoped on its own.
         let sample = HKWorkout(
             activityType: .functionalStrengthTraining,
             start: started,
             end: ended,
-            quantitySummary: energy,
-            metadata: nil,
-            type: workoutType
+            duration: ended.timeIntervalSince(started),
+            totalEnergyBurned: energy,
+            totalDistance: nil,
+            metadata: nil
         )
 
-        do {
-            try store.save(sample)
-            lastWriteError = nil
-        } catch {
-            lastWriteError = error
+        store.save(sample) { [weak self] _, error in
+            Task { @MainActor in self?.lastWriteError = error }
         }
      }
 }
