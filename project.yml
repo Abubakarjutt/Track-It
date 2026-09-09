@@ -33,7 +33,7 @@ targets:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - Path: App/Tests
+      - path: App/Tests
         createIntermediateGroups: true
         optional: true
     settings:

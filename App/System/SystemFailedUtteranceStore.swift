@@ -9,7 +9,7 @@ import WorkoutLoggerApp
 /// and wiring with no branching logic; it is not unit-tested, its behaviour
 /// covered by the model over the capturing fake.
 @MainActor
-final class SystemFailedUtteranceStore: FailedUtteranceStore {
+final class SystemFailedUtteranceStore: @MainActor FailedUtteranceStore {
     private struct Stored: Codable {
         let id: String
         let transcript: String

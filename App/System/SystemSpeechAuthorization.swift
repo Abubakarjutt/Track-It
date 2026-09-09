@@ -27,11 +27,18 @@ final class SystemSpeechAuthorization: SpeechAuthorization {
     }
 
     func request() async {
-        await withCheckedContinuation { cont in
-            SFSpeechRecognizer.requestAuthorization { _ in cont.resume() }
+        // Both system callbacks fire on an arbitrary background queue. Because
+        // this type is `@MainActor`, Swift 6 would otherwise infer the closures
+        // as main-actor-isolated and trap on `dispatch_assert_queue` when the
+        // SDK runs them off-main. `@Sendable` keeps them non-isolated; resuming
+        // a `CheckedContinuation` is thread-safe and touches no isolated state.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            SFSpeechRecognizer.requestAuthorization { @Sendable _ in cont.resume() }
         }
-        _ = await withCheckedContinuation { cont in
-            AVAudioApplication.requestRecordPermission { granted in cont.resume(returning: granted) }
+        _ = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            AVAudioApplication.requestRecordPermission { @Sendable granted in
+                cont.resume(returning: granted)
+            }
         }
     }
 }
