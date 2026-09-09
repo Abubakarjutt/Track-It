@@ -68,8 +68,18 @@ final class SystemSpeechRecognizer: TranscriptSource {
         self.request = request
 
         let input = audioEngine.inputNode
-        input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { buffer, _ in
-            request.append(buffer)
+        // The tap block runs on a realtime audio thread, so it must not be
+        // main-actor-isolated — Swift 6 would infer that from the enclosing
+        // `@MainActor` type and trap on `dispatch_assert_queue` the moment
+        // audio flows. `@Sendable` forces non-isolation, which then requires
+        // every capture to be Sendable; `SFSpeechAudioBufferRecognitionRequest`
+        // is not, but `append(_:)` is explicitly designed to be fed from the
+        // tap block (the canonical AVAudioEngine + SFSpeechRecognizer wiring),
+        // and `endUtterance()` always `removeTap`s before it touches the
+        // request again — so the `nonisolated(unsafe)` capture is sound.
+        nonisolated(unsafe) let tapRequest = request
+        input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { @Sendable buffer, _ in
+            tapRequest.append(buffer)
         }
         audioEngine.prepare()
         try? audioEngine.start()
