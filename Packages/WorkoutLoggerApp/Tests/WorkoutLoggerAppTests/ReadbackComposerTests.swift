@@ -10,7 +10,7 @@ struct ReadbackComposerTests {
             loadType: load == nil ? .bodyweight : .external,
             effort: .reps, role: .working, grouping: .straight,
             load: load, loadUnit: load == nil ? nil : unit, reps: reps
-        ))
+        ), confidence: 1.0)
     }
 
     @Test("full readback of a loaded set names the exercise and spells it out")
@@ -54,14 +54,14 @@ struct ReadbackComposerTests {
         let set = ParseResult.set(ParsedSet(
             loadType: .bodyweight, effort: .duration, role: .working, grouping: .straight,
             durationSeconds: 60
-        ))
+        ), confidence: 1.0)
         #expect(readbackPlan(for: set, style: .full, exerciseName: "Plank") == .speak("Logged. Plank, 60 seconds."))
     }
 
     @Test("an announcement reads the exercise name")
     func announcement() {
         let plan = readbackPlan(
-            for: .announcement(Exercise(name: "Deadlift")), style: .full, exerciseName: nil
+            for: .announcement(Exercise(name: "Deadlift"), confidence: 1.0), style: .full, exerciseName: nil
         )
         #expect(plan == .speak("Deadlift."))
     }

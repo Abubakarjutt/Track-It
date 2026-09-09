@@ -428,7 +428,7 @@ public final class WorkoutSessionModel {
             activeExerciseName = nil
             return
         }
-        for case .announcement(let exercise) in results {
+        for case .announcement(let exercise, _) in results {
             activeExerciseName = exercise.name
             return
         }
@@ -543,8 +543,8 @@ public final class WorkoutSessionModel {
     }
 
     private func exerciseName(for salient: ParseResult, in results: [ParseResult]) -> String? {
-        for case .announcement(let exercise) in results { return exercise.name }
-        if isAnnouncement(salient), case .announcement(let exercise) = salient { return exercise.name }
+        for case .announcement(let exercise, _) in results { return exercise.name }
+        if isAnnouncement(salient), case .announcement(let exercise, _) = salient { return exercise.name }
         return activeExerciseName
     }
 

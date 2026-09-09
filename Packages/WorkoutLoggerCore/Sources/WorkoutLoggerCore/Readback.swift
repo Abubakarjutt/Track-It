@@ -15,15 +15,16 @@ public enum ReadbackStyle: Equatable, Sendable {
     case earcon
 }
 
+/// A parse whose confidence is below this reads back in full even for a familiar
+/// exercise — story 20's "fuller when unsure". Shares the resolver's
+/// confident-match bar; split it out if the two ever need to diverge.
+let readbackConfidenceFloor = confidentMatchThreshold
+
 /// Chooses the readback style for `result`. `isNewExercise` is true the first
 /// time an exercise is used in the current workout; `capAtEarcon` is the user's
-/// "earcon only" setting and overrides everything.
-///
-/// Confidence gating (spec line 325 — a shaky parse gets a full readback) is not
-/// wired here yet: the parser reports a confidence score only on `.lowConfidence`
-/// results, so there is nothing to gate a `.set` or `.announcement` on. When the
-/// parser starts reporting confidence on confident results, add the threshold
-/// check back here.
+/// "earcon only" setting and overrides everything. A `.set` or `.announcement`
+/// whose confidence is below `readbackConfidenceFloor` reads back in full
+/// regardless of familiarity (story 20 — a shaky parse gets the full readback).
 public func readbackStyle(
     for result: ParseResult,
     isNewExercise: Bool,
@@ -34,7 +35,8 @@ public func readbackStyle(
     switch result {
     case .lowConfidence:
         return .full
-    case .set, .announcement:
+    case let .set(_, confidence), let .announcement(_, confidence):
+        if confidence < readbackConfidenceFloor { return .full }
         return isNewExercise ? .full : .terse
     case .command:
         return .earcon

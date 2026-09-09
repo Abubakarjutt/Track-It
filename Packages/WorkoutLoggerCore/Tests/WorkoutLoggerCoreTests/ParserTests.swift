@@ -22,7 +22,7 @@ struct ParserTests {
                 load: 225,
                 loadUnit: .pounds,
                 reps: 5
-            ))
+            ), confidence: 1.0)
         ])
     }
 
@@ -33,7 +33,7 @@ struct ParserTests {
 
         let results = parse("squats", context: WorkoutContext(), library: library)
 
-        #expect(results == [.announcement(squat)])
+        #expect(results == [.announcement(squat, confidence: 1.0)])
     }
 
     @Test("a 'now' or 'next' lead-in still announces the exercise", arguments: [
@@ -47,7 +47,7 @@ struct ParserTests {
         let results = parse(phrase, context: WorkoutContext(), library: library)
 
         let expected = phrase.hasSuffix("squat") ? squat : bench
-        #expect(results == [.announcement(expected)])
+        #expect(results == [.announcement(expected, confidence: 1.0)])
     }
 
     @Test("inline form: an exercise name followed by a set")
@@ -62,7 +62,7 @@ struct ParserTests {
         )
 
         #expect(results == [
-            .announcement(bench),
+            .announcement(bench, confidence: 1.0),
             .set(ParsedSet(
                 loadType: .external,
                 effort: .reps,
@@ -71,7 +71,7 @@ struct ParserTests {
                 load: 185,
                 loadUnit: .pounds,
                 reps: 8
-            )),
+            ), confidence: 1.0),
         ])
     }
 
@@ -93,7 +93,7 @@ struct ParserTests {
                 load: 135,
                 loadUnit: .pounds,
                 reps: 10
-            ))
+            ), confidence: 1.0)
         ])
     }
 
@@ -105,14 +105,14 @@ struct ParserTests {
         let results = parse("pull-ups 12", context: WorkoutContext(), library: library)
 
         #expect(results == [
-            .announcement(pullUp),
+            .announcement(pullUp, confidence: 1.0),
             .set(ParsedSet(
                 loadType: .bodyweight,
                 effort: .reps,
                 role: .working,
                 grouping: .straight,
                 reps: 12
-            )),
+            ), confidence: 1.0),
         ])
     }
 
@@ -134,7 +134,7 @@ struct ParserTests {
                 load: 25,
                 loadUnit: .pounds,
                 reps: 8
-            ))
+            ), confidence: 1.0)
         ])
     }
 
@@ -156,7 +156,7 @@ struct ParserTests {
                 load: 40,
                 loadUnit: .pounds,
                 reps: 8
-            ))
+            ), confidence: 1.0)
         ])
     }
 
@@ -168,14 +168,14 @@ struct ParserTests {
         let results = parse("plank for 60 seconds", context: WorkoutContext(), library: library)
 
         #expect(results == [
-            .announcement(plank),
+            .announcement(plank, confidence: 1.0),
             .set(ParsedSet(
                 loadType: .bodyweight,
                 effort: .duration,
                 role: .working,
                 grouping: .straight,
                 durationSeconds: 60
-            )),
+            ), confidence: 1.0),
         ])
     }
 
@@ -232,7 +232,7 @@ struct ParserTests {
                 load: expectedLoad,
                 loadUnit: expectedUnit,
                 reps: 5
-            ))
+            ), confidence: 1.0)
         ])
     }
 
@@ -250,7 +250,7 @@ struct ParserTests {
 
         let results = parse(phrase, context: context, library: .empty)
 
-        guard case .set(let set) = results.first else {
+        guard case .set(let set, _) = results.first else {
             Issue.record("expected a set, got \(results)")
             return
         }
@@ -269,7 +269,7 @@ struct ParserTests {
         )
 
         #expect(results == [
-            .announcement(bench),
+            .announcement(bench, confidence: 1.0),
             .set(ParsedSet(
                 loadType: .external,
                 effort: .reps,
@@ -278,7 +278,7 @@ struct ParserTests {
                 load: 100,
                 loadUnit: .kilograms,
                 reps: 5
-            )),
+            ), confidence: 1.0),
         ])
     }
 
@@ -307,7 +307,7 @@ struct ParserTests {
                 load: 45,
                 loadUnit: .pounds,
                 reps: 12
-            ))
+            ), confidence: 1.0)
         ])
     }
 
@@ -388,14 +388,49 @@ struct ParserTests {
         let results = parse("farmer carry 40 meters", context: WorkoutContext(), library: library)
 
         #expect(results == [
-            .announcement(carry),
+            .announcement(carry, confidence: 1.0),
             .set(ParsedSet(
                 loadType: .bodyweight,
                 effort: .distance,
                 role: .working,
                 grouping: .straight,
                 distanceMeters: 40
-            )),
+            ), confidence: 1.0),
         ])
+    }
+
+    // MARK: - Confidence on confident results (cluster 1c)
+
+    @Test("a clean regex set match reports full confidence")
+    func straightSetIsFullyConfident() {
+        let results = parse("100 for 5", context: WorkoutContext(unit: .kilograms), library: .empty)
+        guard case .set(_, let confidence) = results.first else { Issue.record("expected a set"); return }
+        #expect(confidence == 1.0)
+    }
+
+    @Test("an inline set against a strong-but-inexact name carries the resolver's confidence")
+    func inlineSetCarriesResolverConfidence() {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let results = parse(
+            "bemch press 100 for 5",
+            context: WorkoutContext(unit: .kilograms),
+            library: ExerciseLibrary([bench])
+        )
+        guard case .announcement(_, let annConfidence) = results.first,
+              case .set(_, let setConfidence) = results.dropFirst().first
+        else { Issue.record("expected announcement + set, got \(results)"); return }
+        // The inline-set path only reaches `.announcement` when the resolver
+        // clears its confident-match bar (0.85), so the score lands in
+        // [0.85, 1.0) — inexact enough not to be 1.0, strong enough to auto-log.
+        #expect(annConfidence < 1.0 && annConfidence >= 0.85)
+        #expect(setConfidence == annConfidence)
+    }
+
+    @Test("a bare exact announcement reports full confidence")
+    func bareExactAnnouncementIsFullyConfident() {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let results = parse("bench", context: WorkoutContext(unit: .kilograms), library: ExerciseLibrary([bench]))
+        guard case .announcement(_, let confidence) = results.first else { Issue.record("expected an announcement"); return }
+        #expect(confidence == 1.0)
     }
 }

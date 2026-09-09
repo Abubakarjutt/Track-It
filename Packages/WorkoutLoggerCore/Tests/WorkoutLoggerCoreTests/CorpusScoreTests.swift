@@ -52,17 +52,17 @@ private func externalSet(
 private let launchGateCorpus: [CorpusEntry] = [
     CorpusEntry(
         hypotheses: ["two twenty five for five"],
-        expected: [.set(externalSet(225, 5))],
+        expected: [.set(externalSet(225, 5), confidence: 1.0)],
         note: "external / working / straight, spoken compound load"
     ),
     CorpusEntry(
         hypotheses: ["warmup one thirty five for ten"],
-        expected: [.set(externalSet(135, 10, role: .warmup))],
+        expected: [.set(externalSet(135, 10, role: .warmup), confidence: 1.0)],
         note: "warmup role keyword"
     ),
     CorpusEntry(
         hypotheses: ["dropset forty for twelve"],
-        expected: [.set(externalSet(40, 12, grouping: .dropset))],
+        expected: [.set(externalSet(40, 12, grouping: .dropset), confidence: 1.0)],
         note: "dropset grouping keyword"
     ),
     CorpusEntry(
@@ -70,7 +70,7 @@ private let launchGateCorpus: [CorpusEntry] = [
         expected: [.set(ParsedSet(
             loadType: .added, effort: .reps, role: .working, grouping: .straight,
             load: 25, loadUnit: .kilograms, reps: 8
-        ))],
+        ), confidence: 1.0)],
         note: "added load keyword"
     ),
     CorpusEntry(
@@ -78,36 +78,36 @@ private let launchGateCorpus: [CorpusEntry] = [
         expected: [.set(ParsedSet(
             loadType: .assisted, effort: .reps, role: .working, grouping: .straight,
             load: 40, loadUnit: .kilograms, reps: 8
-        ))],
+        ), confidence: 1.0)],
         note: "assisted load keyword"
     ),
     CorpusEntry(
         hypotheses: ["pull ups twelve"],
-        expected: [.announcement(pullUp), .set(ParsedSet(
+        expected: [.announcement(pullUp, confidence: 1.0), .set(ParsedSet(
             loadType: .bodyweight, effort: .reps, role: .working, grouping: .straight,
             reps: 12
-        ))],
+        ), confidence: 1.0)],
         note: "bodyweight reps, inline name"
     ),
     CorpusEntry(
         hypotheses: ["plank for sixty seconds"],
-        expected: [.announcement(plank), .set(ParsedSet(
+        expected: [.announcement(plank, confidence: 1.0), .set(ParsedSet(
             loadType: .bodyweight, effort: .duration, role: .working, grouping: .straight,
             durationSeconds: 60
-        ))],
+        ), confidence: 1.0)],
         note: "duration effort"
     ),
     CorpusEntry(
         hypotheses: ["farmer carry forty meters"],
-        expected: [.announcement(carry), .set(ParsedSet(
+        expected: [.announcement(carry, confidence: 1.0), .set(ParsedSet(
             loadType: .bodyweight, effort: .distance, role: .working, grouping: .straight,
             distanceMeters: 40
-        ))],
+        ), confidence: 1.0)],
         note: "distance effort"
     ),
     CorpusEntry(
         hypotheses: ["bench one eighty five for eight"],
-        expected: [.announcement(bench), .set(externalSet(185, 8))],
+        expected: [.announcement(bench, confidence: 1.0), .set(externalSet(185, 8), confidence: 1.0)],
         note: "inline name + set"
     ),
     CorpusEntry(
@@ -130,12 +130,12 @@ private let launchGateCorpus: [CorpusEntry] = [
             "bench breast two twenty five for five",
             "bench press two twenty five for five",
         ],
-        expected: [.announcement(bench), .set(externalSet(225, 5))],
+        expected: [.announcement(bench, confidence: 1.0), .set(externalSet(225, 5), confidence: 1.0)],
         note: "post-processor picks the better-resolving hypothesis"
     ),
     CorpusEntry(
         hypotheses: ["romanian deadlif three fifteen for three"],
-        expected: [.announcement(rdl), .set(externalSet(315, 3))],
+        expected: [.announcement(rdl, confidence: 1.0), .set(externalSet(315, 3), confidence: 1.0)],
         note: "post-processor biases a misheard name span"
     ),
 ]
