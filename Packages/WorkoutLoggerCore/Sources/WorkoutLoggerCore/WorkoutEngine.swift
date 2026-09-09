@@ -160,11 +160,12 @@ public final class WorkoutEngine {
     /// The workout in progress, or `nil` before the first `startWorkout()`.
     public private(set) var workout: Workout?
     /// Personal records set during the workout in progress, in the order they
-    /// happened. Reset by `startWorkout()`.
-    public private(set) var personalRecords: [PersonalRecord] = []
+    /// happened. Reset by `startWorkout()`. Forwarded from `pr` (1e).
+    public var personalRecords: [PersonalRecord] { pr.personalRecords }
     /// When the current rest period began — the last set's time, or when
-    /// `start rest` was said — or `nil` when no rest is running.
-    public private(set) var restStartedAt: Date?
+    /// `start rest` was said — or `nil` when no rest is running. Forwarded from
+    /// `rest` (1e).
+    public var restStartedAt: Date? { rest.startedAt }
     /// The `WorkoutContext` the most recent `hear(_:)` parsed against — the active
     /// exercise and that exercise's previous set (1b). Exposed so a caller can
     /// observe that the context is populated, not `nil`, after a set.
@@ -172,27 +173,15 @@ public final class WorkoutEngine {
 
     private let store: WorkoutStore
     private var library: ExerciseLibrary
-    /// Best estimated 1RM per exercise captured at launch — the fallback seed when
-    /// no `knownBestsProvider` is injected. Keyed on the whole `Exercise` value
-    /// (1d): two library entries that share a display name but differ in aliases
-    /// keep separate bars instead of colliding on the name.
-    private let knownBests: [Exercise: Double]
-    /// A live source of pre-workout bests, injected so a later workout in the same
-    /// app run re-seeds from up-to-date history rather than a launch-captured value.
-    /// `nil` keeps the launch-time `knownBests` seed. Not `@Sendable` — like `now`,
-    /// it is read only from the engine's owning actor.
-    private let knownBestsProvider: (() -> [Exercise: Double])?
-    /// The pre-workout PR-bar floor for the workout in progress: `seededBests()`
-    /// snapshotted when it opened. `recomputeBest` folds this workout's sets over
-    /// this, so a correction cannot rebase the bar onto a different (stale) seed.
-    private var workoutBestsSeed: [Exercise: Double] = [:]
-    /// Running best estimated 1RM per exercise: `workoutBestsSeed` plus anything
-    /// beaten so far this workout.
-    private var bestOneRepMax: [Exercise: Double] = [:]
+    /// Personal-record detection and the running estimated-1RM bar per exercise,
+    /// split out of the engine (1e). Seeded at launch, optionally re-seeded from a
+    /// live provider each workout (1a), keyed on the whole `Exercise` value (1d).
+    private var pr: PRTracker
+    /// The count-up rest clock and any template-armed per-exercise targets, split
+    /// out of the engine (1e).
+    private var rest: RestTimer
     /// The user's kg/lb preference — the default unit for a set with no spoken unit.
     private var unit: MassUnit
-    /// The count-up rest timer's target — the rest period a template does not override.
-    private let restTarget: TimeInterval
     /// The engine's clock. Injected so tests can pin timestamps.
     private let now: () -> Date
     /// Index into `workout.entries` that sets and `undo` currently act on. Moves
@@ -211,14 +200,6 @@ public final class WorkoutEngine {
     /// Cleared by any announcement, `undo`, or a new workout — the spec's "before
     /// any intervening set" made concrete.
     private var retryTarget: LoggedSet?
-    /// Per-exercise rest targets armed by `startWorkout(from:)`, keyed on the whole
-    /// `Exercise` value (1d). The active exercise's entry here overrides
-    /// `restTarget`. Empty for a workout not started from a template, or one whose
-    /// template set no rest targets. Both the key (`template.item.exercise`) and
-    /// the lookup value (`activeExercise`, library-resolved) come from the same
-    /// library today, so they compare equal; if template persistence is ever
-    /// added, alias drift between the two could silently fall back to `restTarget`.
-    private var templateRestTargets: [Exercise: TimeInterval] = [:]
 
     public init(
         store: WorkoutStore,
@@ -232,38 +213,27 @@ public final class WorkoutEngine {
         self.store = store
         self.library = library
         self.unit = unit
-        self.knownBests = knownBests
-        self.knownBestsProvider = knownBestsProvider
-        self.restTarget = restTarget
+        self.pr = PRTracker(seed: knownBests, provider: knownBestsProvider)
+        self.rest = RestTimer(defaultTarget: restTarget)
         self.now = now
     }
 
     /// Seconds elapsed in the current rest period, or `nil` if no rest is running.
     public var restElapsedSeconds: TimeInterval? {
-        restStartedAt.map { now().timeIntervalSince($0) }
+        rest.elapsed(now: now())
     }
 
     /// The rest-period target that applies right now: the active exercise's armed
     /// template value if `startWorkout(from:)` set one, otherwise the engine
     /// default. A HUD can show it; `isRestTargetReached` measures against it.
     public var currentRestTargetSeconds: TimeInterval {
-        guard let active = activeExercise, let armed = templateRestTargets[active]
-        else { return restTarget }
-        return armed
+        rest.currentTarget(activeExercise: activeExercise)
     }
 
     /// Whether the current rest has reached its target — the app's cue for the
     /// rest-done haptic and sound (spec story 45). `false` when not resting.
     public var isRestTargetReached: Bool {
-        guard let elapsed = restElapsedSeconds else { return false }
-        return elapsed >= currentRestTargetSeconds
-    }
-
-    /// The pre-workout bests to seed the PR bar with: the live provider's view of
-    /// history when one is injected (so a later workout in the same app run sees an
-    /// earlier workout's records), else the launch-time `knownBests` seed.
-    private func seededBests() -> [Exercise: Double] {
-        knownBestsProvider?() ?? knownBests
+        rest.targetReached(now: now(), activeExercise: activeExercise)
     }
 
     /// Opens a fresh workout and persists it. If a workout is still in progress
@@ -278,12 +248,12 @@ public final class WorkoutEngine {
     public func startWorkout(from template: WorkoutTemplate) {
         let trimmed = template.name.trimmingCharacters(in: .whitespacesAndNewlines)
         startWorkout(templateName: trimmed.isEmpty ? nil : trimmed)
-        templateRestTargets = Dictionary(
+        rest.arm(Dictionary(
             template.items.compactMap { item in
                 item.restTargetSeconds.map { (item.exercise, $0) }
             },
             uniquingKeysWith: { _, last in last }
-        )
+        ))
     }
 
     /// The shared open-a-fresh-workout path. `templateName` is threaded into the
@@ -297,11 +267,8 @@ public final class WorkoutEngine {
         currentSupersetRunID = nil
         supersetRunCount = 0
         retryTarget = nil
-        templateRestTargets = [:]
-        restStartedAt = nil
-        personalRecords = []
-        workoutBestsSeed = seededBests()
-        bestOneRepMax = workoutBestsSeed
+        rest.reset()
+        pr.reseed()
         store.save(workout)
     }
 
@@ -311,8 +278,9 @@ public final class WorkoutEngine {
     /// New sets attach to the workout's last entry. The rest timer starts fresh
     /// (a rest period from before the app was killed is meaningless). No
     /// `PersonalRecord` is re-announced for work already in the record — but the
-    /// PR bar is seeded from `seededBests()` folded with that work, so a set logged
-    /// after resuming is a record only if it beats both history and this workout.
+    /// PR bar is re-seeded (`pr.reseed()`) then folded with that work
+    /// (`pr.foldIn`), so a set logged after resuming is a record only if it beats
+    /// both history and this workout.
     ///
     /// Precondition: no workout is already open. The only caller is the launch
     /// composition root, before any `startWorkout`. Unlike `startWorkout()` this
@@ -323,26 +291,19 @@ public final class WorkoutEngine {
 
         self.workout = workout
         activeEntryIndex = workout.entries.indices.last
-        personalRecords = []
         retryTarget = nil
         currentSupersetRunID = nil
         supersetRunCount = workout.entries
             .flatMap(\.sets)
             .compactMap(\.supersetRunID)
             .max() ?? 0
-        templateRestTargets = [:]
-        restStartedAt = nil
+        rest.reset()
 
-        workoutBestsSeed = seededBests()
-        var best = workoutBestsSeed
-        for entry in workout.entries {
-            for set in entry.sets where set.role == .working {
-                guard let load = set.loadKilograms, let reps = set.reps else { continue }
-                let e1rm = estimatedOneRepMax(loadKilograms: load, reps: reps)
-                best[entry.exercise] = max(best[entry.exercise] ?? 0, e1rm)
-            }
-        }
-        bestOneRepMax = best
+        // Re-seed the PR bar, then fold this workout's existing work into it so a
+        // set logged after resuming is a record only if it beats both history and
+        // the sets already here. No `PersonalRecord` is re-announced.
+        pr.reseed()
+        pr.foldIn(workout)
 
         store.save(workout)
     }
@@ -352,7 +313,7 @@ public final class WorkoutEngine {
         guard var workout, !workout.isEnded else { return }
         workout.endedAt = now()
         self.workout = workout
-        restStartedAt = nil // no rest timer on a closed workout
+        rest.skip() // no rest timer on a closed workout
         store.save(workout)
     }
 
@@ -370,7 +331,7 @@ public final class WorkoutEngine {
         let exercise = current.entries[entryIndex].exercise
         mutate { $0 = $0.replacingSet(at: entryIndex, setIndex, with: set) }
         retryTarget = nil
-        recomputeBest(for: exercise)
+        pr.recompute(for: exercise, from: setsLogged(for: exercise))
     }
 
     /// Deletes the set at `entryIndex` / `setIndex` from the workout in progress —
@@ -392,7 +353,7 @@ public final class WorkoutEngine {
         mutate { $0 = $0.removingSet(at: entryIndex, setIndex) }
 
         retryTarget = nil
-        recomputeBest(for: exercise)
+        pr.recompute(for: exercise, from: setsLogged(for: exercise))
 
         if let active,
            let restored = workout?.entries.firstIndex(where: { $0.exercise == active }) {
@@ -472,8 +433,9 @@ public final class WorkoutEngine {
     }
 
     /// The exercise sets currently attach to, or `nil` — the `activeExercise`
-    /// half of the parser context (1b), the key into `templateRestTargets`, and
-    /// the value `removeSet` re-finds the active entry by after an edit (1d).
+    /// half of the parser context (1b), the key `rest` looks up an armed template
+    /// target by, and the value `removeSet` re-finds the active entry by after an
+    /// edit (1d).
     private var activeExercise: Exercise? {
         activeEntry?.exercise
     }
@@ -540,46 +502,22 @@ public final class WorkoutEngine {
                 workout.entries[active].sets[last] = corrected
             }
             retryTarget = corrected
-            recomputeBest(for: exercise)
+            pr.recompute(for: exercise, from: setsLogged(for: exercise))
             return
         }
 
         mutate { $0.entries[active].sets.append(set) }
         retryTarget = set
-        restStartedAt = set.loggedAt // rest counts up from the set just logged
-        recordPersonalBest(set, for: exercise)
+        rest.start(at: set.loggedAt) // rest counts up from the set just logged
+        pr.record(set, for: exercise)
     }
 
-    /// Flags a personal record when a working rep set beats the running best
-    /// estimated 1RM for its exercise. Warmups and timed / distance efforts are
-    /// out (spec line 302). Incremental: the bar only moves up, and every rise is
-    /// a new celebratory moment.
-    private func recordPersonalBest(_ set: LoggedSet, for exercise: Exercise) {
-        guard set.role == .working, let load = set.loadKilograms, let reps = set.reps
-        else { return }
-        let e1rm = estimatedOneRepMax(loadKilograms: load, reps: reps)
-        guard e1rm > (bestOneRepMax[exercise] ?? 0) else { return }
-        bestOneRepMax[exercise] = e1rm
-        personalRecords.append(
-            PersonalRecord(exercise: exercise, estimatedOneRepMaxKilograms: e1rm)
-        )
-    }
-
-    /// Re-derives the running best estimated 1RM for `exercise` from the
-    /// pre-workout seed plus every working rep set now in the record. Used after a
-    /// correction, where `recordPersonalBest` — which only ever raises the bar —
-    /// would leave it stale: too high after a correction down, double-counted
-    /// after a correction up. Never appends a `PersonalRecord`; a fix is not a
-    /// new moment.
-    private func recomputeBest(for exercise: Exercise) {
-        let sets = (workout?.entries ?? []).lazy
+    /// Every set logged for `exercise` in the workout so far, in order — the input
+    /// `PRTracker.recompute(for:from:)` folds over its pre-workout seed.
+    private func setsLogged(for exercise: Exercise) -> [LoggedSet] {
+        (workout?.entries ?? [])
             .filter { $0.exercise == exercise }
             .flatMap(\.sets)
-        bestOneRepMax[exercise] = sets.reduce(workoutBestsSeed[exercise] ?? 0) { best, set in
-            guard set.role == .working, let load = set.loadKilograms, let reps = set.reps
-            else { return best }
-            return max(best, estimatedOneRepMax(loadKilograms: load, reps: reps))
-        }
     }
 
     /// Removes the last thing appended to the active entry: its last set, or the
@@ -620,13 +558,13 @@ public final class WorkoutEngine {
     /// Starts the rest timer from now. Ignored when no workout is open.
     private func startRest() {
         guard openWorkout != nil else { return }
-        restStartedAt = now()
+        rest.start(at: now())
     }
 
     /// Stops the rest timer. Idempotent — like `endSupersetRun()`, clearing to
     /// `nil` cannot corrupt state, so it needs no guard.
     private func skipRest() {
-        restStartedAt = nil
+        rest.skip()
     }
 
     /// Opens a new superset run: sets logged until `endSupersetRun()` share its id.
