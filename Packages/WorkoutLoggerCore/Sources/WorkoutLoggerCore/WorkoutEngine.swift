@@ -163,8 +163,9 @@ public final class WorkoutEngine {
     private let knownBests: [String: Double]
     /// A live source of pre-workout bests, injected so a later workout in the same
     /// app run re-seeds from up-to-date history rather than a launch-captured value.
-    /// `nil` keeps the launch-time `knownBests` seed.
-    private let knownBestsProvider: (@Sendable () -> [String: Double])?
+    /// `nil` keeps the launch-time `knownBests` seed. Not `@Sendable` — like `now`,
+    /// it is read only from the engine's owning actor.
+    private let knownBestsProvider: (() -> [String: Double])?
     /// The pre-workout PR-bar floor for the workout in progress: `seededBests()`
     /// snapshotted when it opened. `recomputeBest` folds this workout's sets over
     /// this, so a correction cannot rebase the bar onto a different (stale) seed.
@@ -205,7 +206,7 @@ public final class WorkoutEngine {
         unit: MassUnit = .kilograms,
         knownBests: [String: Double] = [:],
         restTarget: TimeInterval = WorkoutEngine.defaultRestTargetSeconds,
-        knownBestsProvider: (@Sendable () -> [String: Double])? = nil,
+        knownBestsProvider: (() -> [String: Double])? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store

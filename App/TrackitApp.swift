@@ -42,14 +42,18 @@ struct TrackitApp: App {
         let settingsStore = UserDefaultsSettingsStore()
         let speechAuth = SystemSpeechAuthorization()
 
-        let history = availability.isDegraded ? [] : store.history()
+        let degraded = availability.isDegraded
+        let history = degraded ? [] : store.history()
         let knownBests = TrackitApp.knownBests(from: history)
         let engine = WorkoutEngine(
             store: store, library: library,
-            unit: settingsStore.defaultUnit, knownBests: knownBests
+            unit: settingsStore.defaultUnit, knownBests: knownBests,
+            knownBestsProvider: {
+                TrackitApp.knownBests(from: degraded ? [] : store.history())
+            }
         )
 
-         let openWorkout = availability.isDegraded ? nil : store.openWorkout()
+         let openWorkout = degraded ? nil : store.openWorkout()
         var staleRecovery: StaleWorkoutRecovery?
         switch launchDecision(openWorkout: openWorkout, now: Date()) {
         case .fresh:
