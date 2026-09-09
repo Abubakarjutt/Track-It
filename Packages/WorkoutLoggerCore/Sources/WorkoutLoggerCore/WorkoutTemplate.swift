@@ -14,6 +14,19 @@ public struct WorkoutTemplate: Equatable, Sendable {
         self.name = name
         self.items = items
     }
+
+    /// The per-exercise rest targets to arm when this template drives a workout,
+    /// keyed on the whole `Exercise` value. Items with no target of their own are
+    /// omitted; a duplicated exercise keeps its last-listed target. Read by
+    /// `WorkoutEngine` at `startWorkout(from:)` and at the `resume(_:)` re-arm.
+    public var restTargetsByExercise: [Exercise: TimeInterval] {
+        Dictionary(
+            items.compactMap { item in
+                item.restTargetSeconds.map { (item.exercise, $0) }
+            },
+            uniquingKeysWith: { _, last in last }
+        )
+    }
 }
 
 /// One line of a `WorkoutTemplate`.

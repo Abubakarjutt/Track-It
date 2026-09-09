@@ -3,3 +3,6 @@
 *.xcodeproj
 .swiftpm/
 Package.resolved
+
+# Local analysis scratch (graft symbol graph) — never part of the repo.
+graft/
