@@ -16,16 +16,30 @@ public struct Workout: Equatable, Sendable, Codable {
     /// A freeform session note the lifter adds after the fact (spec story 48),
     /// or `nil`. Carried only; nothing in the engine reads it.
     public var note: String?
+    /// The name of the `WorkoutTemplate` this workout was started from, or `nil`
+    /// for a plain `startWorkout()` (and for a template whose name is blank).
+    /// The stable handle a future cluster-2 resume will use to re-load the
+    /// template and re-arm its per-exercise rest targets. Optional with
+    /// synthesised `Codable`, so a record written before this field existed
+    /// decodes as `nil`.
+    public var templateName: String?
 
     /// Whether the workout has been closed. Derived from `endedAt` so there is one
     /// source of truth.
     public var isEnded: Bool { endedAt != nil }
 
-    public init(entries: [Entry] = [], startedAt: Date, endedAt: Date? = nil, note: String? = nil) {
+    public init(
+        entries: [Entry] = [],
+        startedAt: Date,
+        endedAt: Date? = nil,
+        note: String? = nil,
+        templateName: String? = nil
+    ) {
         self.entries = entries
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.note = note
+        self.templateName = templateName
     }
 }
 
@@ -250,8 +264,28 @@ public final class WorkoutEngine {
     /// (the user forgot to say "end workout"), it is closed and persisted first
     /// so it stays a completed workout rather than being silently abandoned.
     public func startWorkout() {
+        startWorkout(templateName: nil)
+    }
+
+    /// Opens a fresh workout with `template`'s per-exercise rest targets armed.
+    /// Entries are not pre-created — announcing an exercise is still what adds it.
+    public func startWorkout(from template: WorkoutTemplate) {
+        let trimmed = template.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        startWorkout(templateName: trimmed.isEmpty ? nil : trimmed)
+        templateRestTargets = Dictionary(
+            template.items.compactMap { item in
+                item.restTargetSeconds.map { (item.exercise.name, $0) }
+            },
+            uniquingKeysWith: { _, last in last }
+        )
+    }
+
+    /// The shared open-a-fresh-workout path. `templateName` is threaded into the
+    /// first persisted revision, so a template-started workout is never on disk
+    /// without its origin.
+    private func startWorkout(templateName: String?) {
         endWorkout()
-        let workout = Workout(startedAt: now())
+        let workout = Workout(startedAt: now(), templateName: templateName)
         self.workout = workout
         activeEntryIndex = nil
         currentSupersetRunID = nil
@@ -263,18 +297,6 @@ public final class WorkoutEngine {
         workoutBestsSeed = seededBests()
         bestOneRepMax = workoutBestsSeed
         store.save(workout)
-    }
-
-    /// Opens a fresh workout with `template`'s per-exercise rest targets armed.
-    /// Entries are not pre-created — announcing an exercise is still what adds it.
-    public func startWorkout(from template: WorkoutTemplate) {
-        startWorkout()
-        templateRestTargets = Dictionary(
-            template.items.compactMap { item in
-                item.restTargetSeconds.map { (item.exercise.name, $0) }
-            },
-            uniquingKeysWith: { _, last in last }
-        )
     }
 
     /// Adopts an existing, not-yet-ended workout — the launch resume path for a

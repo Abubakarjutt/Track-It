@@ -31,6 +31,21 @@ struct WorkoutCodableTests {
         #expect(decoded == workout)
     }
 
+    @Test("templateName round-trips, and JSON written before the field decodes as nil")
+    func templateNameRoundTrip() throws {
+        let workout = Workout(
+            entries: [], startedAt: Date(timeIntervalSince1970: 1), templateName: "Leg Day"
+        )
+        let data = try JSONEncoder().encode(workout)
+        #expect(try JSONDecoder().decode(Workout.self, from: data).templateName == "Leg Day")
+
+        // A record encoded before templateName existed simply omits the key.
+        // startedAt is a bare timeIntervalSinceReferenceDate Double under the
+        // default (.deferredToDate) strategy: 1s-since-1970 == -978_307_199 since 2001.
+        let legacy = Data(#"{"entries":[],"startedAt":-978307199}"#.utf8)
+        #expect(try JSONDecoder().decode(Workout.self, from: legacy).templateName == nil)
+    }
+
     @Test("a personal record round-trips")
     func personalRecordRoundTrip() throws {
         let pr = PersonalRecord(exercise: Exercise(name: "Squat"), estimatedOneRepMaxKilograms: 180.25)
