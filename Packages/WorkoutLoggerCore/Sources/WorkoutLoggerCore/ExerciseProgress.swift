@@ -1,6 +1,7 @@
 // Per-exercise progress — folds a list of stored workouts into a per-session
 // summary the progress screen draws. Pure: no engine, no store. Operates on
-// stored kilogram sets (ADR-0002) and reuses `estimatedOneRepMax` (ADR-0003).
+// stored kilogram sets (ADR-0002); `epleyEstimate(of:)` wraps the engine's
+// `estimatedOneRepMax(loadKilograms:reps:)` (ADR-0003).
 // See specs/v1-voice-logging.md (stories 49–50).
 
 import Foundation
@@ -9,7 +10,7 @@ import Foundation
 public struct ExerciseProgress: Equatable, Sendable {
     /// One entry per workout in `history` that included the exercise, in the
     /// order the workouts were given.
-    public var sessions: [ExerciseSession]
+    public let sessions: [ExerciseSession]
 
     /// The highest per-session estimated 1RM across all of `sessions`, or `nil`
     /// if the exercise was never trained for reps. This is the exercise's
@@ -27,21 +28,21 @@ public struct ExerciseProgress: Equatable, Sendable {
 /// What one workout did for one exercise.
 public struct ExerciseSession: Equatable, Sendable {
     /// The workout's start time — the x-axis point for this session.
-    public var date: Date
+    public let date: Date
     /// Total tonnage for the exercise this session: Σ (load × reps) across its
     /// working sets (CONTEXT.md "Volume"). Warmups do not count.
-    public var volumeKilograms: Double
+    public let volumeKilograms: Double
     /// Σ reps across the session's working sets, load or no load. The progression
     /// signal for bodyweight work (story 25), where `volumeKilograms` is zero.
     /// Warmups and timed / distance sets do not count.
-    public var workingReps: Int
+    public let workingReps: Int
     /// The heaviest working set's load this session, or `nil` when no working set
     /// carried a stored load (a pure bodyweight session). Warmups do not count.
-    public var topSetLoadKilograms: Double?
+    public let topSetLoadKilograms: Double?
     /// The highest Epley estimate (ADR-0003) across the session's working *rep*
     /// sets, or `nil` when none had both a load and a rep count. The per-session
     /// point of the estimated-1RM trend (story 50).
-    public var bestEstimatedOneRepMaxKilograms: Double?
+    public let bestEstimatedOneRepMaxKilograms: Double?
 
     public init(
         date: Date,
@@ -70,7 +71,7 @@ public func exerciseProgress(for exercise: Exercise, across history: [Workout]) 
         let volume = working.reduce(0.0) { running, set in running + volumeContribution(of: set) }
         let reps = working.reduce(0) { running, set in running + (set.reps ?? 0) }
         let topSet = working.compactMap(\.loadKilograms).max()
-        let bestEstimate = working.compactMap(estimatedOneRepMax(of:)).max()
+        let bestEstimate = working.compactMap(epleyEstimate(of:)).max()
 
         return ExerciseSession(
             date: workout.startedAt,
@@ -94,8 +95,10 @@ private func volumeContribution(of set: LoggedSet) -> Double {
 }
 
 /// The Epley estimate for one set, or `nil` when it lacks a load or a rep count
-/// (bodyweight or timed work) — those sets do not contribute to the trend.
-private func estimatedOneRepMax(of set: LoggedSet) -> Double? {
+/// (bodyweight or timed work) — those sets do not contribute to the trend. Named
+/// so it reads clearly next to the public `estimatedOneRepMax(loadKilograms:reps:)`
+/// it wraps, rather than shadowing that name with a second overload.
+private func epleyEstimate(of set: LoggedSet) -> Double? {
     guard let load = set.loadKilograms, let reps = set.reps else { return nil }
     return estimatedOneRepMax(loadKilograms: load, reps: reps)
 }
