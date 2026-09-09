@@ -187,8 +187,8 @@ struct WorkoutEditingTests {
         #expect(edited.entries[0].sets.map(\.loadKilograms) == [140, 100])
     }
 
-    @Test("moving a set matches the target entry by name even when aliases differ")
-    func movingMatchesTargetByName() {
+    @Test("moving a set matches the target entry by whole value, not just display name (1d)")
+    func movingMatchesTargetByValue() {
         let squatNoAlias = Exercise(name: "Squat", aliases: [])
         let original = Workout(
             entries: [
@@ -198,10 +198,18 @@ struct WorkoutEditingTests {
             startedAt: Date(timeIntervalSince1970: 0)
         )
 
+        // squatNoAlias shares the display name but differs in aliases, so it is a
+        // distinct Exercise: the moved set lands in its own new entry rather than
+        // silently merging into the existing "Squat" entry.
         let edited = original.movingSet(at: 0, 0, toExercise: squatNoAlias)
 
-        #expect(edited.entries.count == 2) // no duplicate "Squat" entry
-        #expect(edited.entries[1].sets.count == 2)
+        #expect(edited.entries.map(\.exercise) == [bench, squat, squatNoAlias])
+        #expect(edited.entries.last?.sets.count == 1)
+
+        // Moving to the exact same Exercise value still merges.
+        let merged = original.movingSet(at: 0, 0, toExercise: squat)
+        #expect(merged.entries.count == 2)
+        #expect(merged.entries[1].sets.count == 2)
     }
 
     @Test("a moved set keeps its axes, note, timestamp, and superset run id")

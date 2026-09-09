@@ -30,7 +30,7 @@ struct WorkoutSessionModelTests {
     private func makeRig(
         script: [[String]],
         capAtEarcon: Bool = false,
-        knownBests: [String: Double] = [:],
+        knownBests: [Exercise: Double] = [:],
         knownBestExercises: Set<String>? = nil,
         unit: MassUnit = .kilograms,
         history: @escaping () -> [Workout] = { [] },
@@ -52,7 +52,7 @@ struct WorkoutSessionModelTests {
             engine: engine, transcriptSource: source, readbackVoice: voice,
             haptics: haptics, library: Self.library, unit: unit,
             capReadbackAtEarcon: capAtEarcon, now: now,
-            knownBestExercises: knownBestExercises ?? Set(knownBests.keys),
+            knownBestExercises: knownBestExercises ?? Set(knownBests.keys.map(\.name)),
             history: history,
             onWorkoutEnded: { ended.add($0) }
          )
@@ -213,7 +213,7 @@ struct WorkoutSessionModelTests {
         // knownBests below the e1RM of 100x5 (Epley: 100 * 35 / 30 = 116.67)
         let rig = try makeRig(
             script: [["start workout"], ["bench 100 for 5"]],
-            knownBests: ["Bench Press": 100]
+            knownBests: [Self.bench: 100]
         )
         await say(rig); await say(rig)
 
@@ -225,7 +225,7 @@ struct WorkoutSessionModelTests {
     func prAddsToLoggedHaptic() async throws {
         let rig = try makeRig(
             script: [["start workout"], ["bench 100 for 5"]],
-            knownBests: ["Bench Press": 100]
+            knownBests: [Self.bench: 100]
         )
         await say(rig); await say(rig)
         #expect(rig.haptics.played == [.logged, .personalRecord])
@@ -445,7 +445,7 @@ struct WorkoutSessionModelTests {
     func seededExerciseCelebratesFirstSet() async throws {
         let rig = try makeRig(
             script: [["start workout"], ["bench 100 for 5"]],
-            knownBests: ["Bench Press": 50]
+            knownBests: [Self.bench: 50]
         )
         await say(rig); await say(rig)
         #expect(rig.haptics.played == [.logged, .personalRecord])
