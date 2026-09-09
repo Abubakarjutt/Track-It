@@ -119,6 +119,41 @@ struct WorkoutTemplateTests {
         #expect(engine.currentRestTargetSeconds == 120)
     }
 
+    @Test("resuming a templated workout re-arms its rest targets via the template provider")
+    func resumeReArmsRestTargetsFromTemplate() {
+        let template = WorkoutTemplate(name: "Lower", items: [
+            TemplateItem(exercise: squat, restTargetSeconds: 210),
+        ])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(
+            store: store,
+            library: ExerciseLibrary([squat]),
+            restTarget: 120,
+            templateProvider: { name in name == "Lower" ? template : nil }
+        )
+
+        // The lifter trained squats from "Lower", forgot to end the workout, and
+        // the app is relaunching into it. The template value no longer exists as
+        // a live value — only its name, on the record.
+        let stale = Workout(
+            entries: [Entry(exercise: squat, sets: [
+                LoggedSet(
+                    loadType: .external, effort: .reps, role: .working,
+                    grouping: .straight, loadKilograms: 140, reps: 5,
+                    loggedAt: Date(timeIntervalSince1970: 1)
+                ),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 0),
+            templateName: "Lower"
+        )
+
+        engine.resume(stale)
+
+        // squat is the active exercise (its entry is last), so its armed 210
+        // applies straight away — the lifter does not re-announce it.
+        #expect(engine.currentRestTargetSeconds == 210)
+    }
+
     @Test("an exercise the template never mentions uses the engine default")
     func unlistedExerciseUsesDefault() {
         let curl = Exercise(name: "Curl", aliases: ["curl"])
