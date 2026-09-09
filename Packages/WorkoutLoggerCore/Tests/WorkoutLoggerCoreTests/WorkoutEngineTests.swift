@@ -469,8 +469,8 @@ struct WorkoutEngineTests {
         let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
         engine.startWorkout()
         engine.hear(["bench"])
-        engine.hear(["100 for 5"]) // no prior set yet, so the context's previousSet is nil here
-        engine.hear(["110 for 3"]) // now the context sees the first set as "previous"
+        engine.hear(["100 for 5"])
+        engine.hear(["110 for 3"]) // this utterance parses against the 100×5 as "previous"
 
         #expect(engine.lastParsingContext.activeExercise == bench)
         let previous = engine.lastParsingContext.previousSet
@@ -495,8 +495,8 @@ struct WorkoutEngineTests {
         #expect(engine.lastParsingContext.previousSet?.load == 110)
     }
 
-     @Test("a correction keeps the original set's timestamp and rest clock")
-     func correctionPreservesTiming() {
+    @Test("a correction keeps the original set's timestamp and rest clock")
+    func correctionPreservesTiming() {
         var clock = Date(timeIntervalSince1970: 0)
         let bench = Exercise(name: "Bench", aliases: ["bench"])
         let store = InMemoryWorkoutStore()

@@ -18,6 +18,14 @@ public enum ReadbackStyle: Equatable, Sendable {
 /// A parse whose confidence is below this reads back in full even for a familiar
 /// exercise — story 20's "fuller when unsure". Shares the resolver's
 /// confident-match bar; split it out if the two ever need to diverge.
+///
+/// Today only a bare `.announcement` (parser rule 7) can land in
+/// `[resolveThreshold, readbackConfidenceFloor)`: every `.set` the parser emits
+/// carries `1.0` (clean regex match) or `>= confidentMatchThreshold` (the
+/// inline-name path gates auto-log there). The `.set` half of the check below is
+/// kept deliberately — it costs nothing and future parser paths may emit a
+/// lower-confidence `.set` — but the synthetic `.set` confidence tests exercise
+/// a value real parser output cannot currently produce.
 let readbackConfidenceFloor = confidentMatchThreshold
 
 /// Chooses the readback style for `result`. `isNewExercise` is true the first
