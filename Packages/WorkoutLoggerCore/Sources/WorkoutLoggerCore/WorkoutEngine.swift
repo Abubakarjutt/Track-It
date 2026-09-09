@@ -184,6 +184,13 @@ public final class WorkoutEngine {
     private var unit: MassUnit
     /// The engine's clock. Injected so tests can pin timestamps.
     private let now: () -> Date
+    /// Re-loads a `WorkoutTemplate` by name at `resume(_:)` — the launch path
+    /// where the template value that armed the rest targets no longer exists,
+    /// only its name on the record (cluster 2). `nil` when no template store is
+    /// wired (every seam that never resumes a templated workout). Mirrors
+    /// `knownBestsProvider`: an optional closure that re-reads persistence the
+    /// engine does not own, at one lifecycle moment.
+    private let templateProvider: ((String) -> WorkoutTemplate?)?
     /// Index into `workout.entries` that sets and `undo` currently act on. Moves
     /// when an exercise is announced — including *back* to an earlier entry when
     /// an exercise already in the workout is announced again.
@@ -208,6 +215,7 @@ public final class WorkoutEngine {
         knownBests: [Exercise: Double] = [:],
         restTarget: TimeInterval = WorkoutEngine.defaultRestTargetSeconds,
         knownBestsProvider: (() -> [Exercise: Double])? = nil,
+        templateProvider: ((String) -> WorkoutTemplate?)? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
@@ -215,6 +223,7 @@ public final class WorkoutEngine {
         self.unit = unit
         self.pr = PRTracker(seed: knownBests, provider: knownBestsProvider)
         self.rest = RestTimer(defaultTarget: restTarget)
+        self.templateProvider = templateProvider
         self.now = now
     }
 
@@ -304,6 +313,20 @@ public final class WorkoutEngine {
             .compactMap(\.supersetRunID)
             .max() ?? 0
         rest.reset()
+
+        // Re-arm the per-exercise rest targets a `startWorkout(from:)` set: the
+        // template value is gone after a relaunch, but its name is on the record
+        // and `templateProvider` can re-load it (cluster 2). Without this a
+        // resumed templated workout falls back to the engine default for every
+        // exercise until the lifter re-announces each one.
+        if let name = workout.templateName, let template = templateProvider?(name) {
+            rest.arm(Dictionary(
+                template.items.compactMap { item in
+                    item.restTargetSeconds.map { (item.exercise, $0) }
+                },
+                uniquingKeysWith: { _, last in last }
+            ))
+        }
 
         // Re-seed the PR bar, then fold this workout's existing work into it so a
         // set logged after resuming is a record only if it beats both history and
