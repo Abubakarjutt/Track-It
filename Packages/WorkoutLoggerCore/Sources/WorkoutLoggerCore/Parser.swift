@@ -141,7 +141,7 @@ public func parse(
         guard isPlausible(set) else {
             return [.lowConfidence(reason: .implausibleValue, bestGuesses: [])]
         }
-        return [.set(set)]
+        return [.set(set, confidence: 1.0)]
     }
 
     // 4. Inline set — "<name> <load> [unit] for <reps>".
@@ -186,13 +186,13 @@ public func parse(
         switch matchInlineExercise(String(stringCapture(match, "name") ?? ""), in: library) {
         case .tooUnsure(let bestGuesses):
             return [.lowConfidence(reason: .unrecognisedExercise, bestGuesses: bestGuesses)]
-        case .announce(let exercise) where reps > maxPlausibleReps:
+        case .announce(let exercise, _) where reps > maxPlausibleReps:
             return [.lowConfidence(reason: .unrecognisedExercise, bestGuesses: [exercise])]
-        case .announce(let exercise):
-            return [.announcement(exercise), .set(ParsedSet(
+        case .announce(let exercise, let confidence):
+            return [.announcement(exercise, confidence: confidence), .set(ParsedSet(
                 loadType: .bodyweight, effort: .reps, role: .working, grouping: .straight,
                 reps: reps
-            ))]
+            ), confidence: confidence)]
         }
     }
 
@@ -200,8 +200,8 @@ public func parse(
     //    "now" / "next" filler ("now squats") is dropped first. Anything the
     //    resolver still can't place is reported low-confidence rather than dropped.
     switch resolve(withoutAnnouncementLead(text), in: library) {
-    case .resolved(let exercise, _):
-        return [.announcement(exercise)]
+    case .resolved(let exercise, let confidence):
+        return [.announcement(exercise, confidence: confidence)]
     case .unresolved(let guesses):
         return [.lowConfidence(reason: .unrecognisedExercise, bestGuesses: guesses)]
     }
@@ -213,14 +213,14 @@ public func parse(
 /// slots have matched. `.announce` carries the exercise to log against;
 /// `.tooUnsure` means the match is too weak to auto-log.
 private enum InlineExercise {
-    case announce(Exercise)
+    case announce(Exercise, confidence: Double)
     case tooUnsure(bestGuesses: [Exercise])
 }
 
 private func matchInlineExercise(_ spokenName: String, in library: ExerciseLibrary) -> InlineExercise {
     switch resolve(spokenName, in: library) {
     case .resolved(let exercise, let confidence) where confidence >= confidentMatchThreshold:
-        return .announce(exercise)
+        return .announce(exercise, confidence: confidence)
     case .resolved(let exercise, _):
         return .tooUnsure(bestGuesses: [exercise])
     case .unresolved(let guesses):
@@ -228,8 +228,9 @@ private func matchInlineExercise(_ spokenName: String, in library: ExerciseLibra
     }
 }
 
-/// On a confident match returns `[.announcement, .set(build(exercise))]`; on a
-/// weak match returns a single `.lowConfidence` and logs nothing.
+/// On a confident match returns `[.announcement, .set(build(exercise))]`, both
+/// carrying the resolver's score; on a weak match returns a single
+/// `.lowConfidence` and logs nothing.
 private func announce(
     _ spokenName: Substring?,
     in library: ExerciseLibrary,
@@ -238,12 +239,12 @@ private func announce(
     switch matchInlineExercise(String(spokenName ?? ""), in: library) {
     case .tooUnsure(let bestGuesses):
         return [.lowConfidence(reason: .unrecognisedExercise, bestGuesses: bestGuesses)]
-    case .announce(let exercise):
+    case .announce(let exercise, let confidence):
         let set = build(exercise)
         guard isPlausible(set) else {
             return [.lowConfidence(reason: .implausibleValue, bestGuesses: [exercise])]
         }
-        return [.announcement(exercise), .set(set)]
+        return [.announcement(exercise, confidence: confidence), .set(set, confidence: confidence)]
     }
 }
 

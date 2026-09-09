@@ -433,8 +433,8 @@ public final class WorkoutEngine {
             case .command(.endSuperset):         endSupersetRun()
             case .command(.startRest):           startRest()
             case .command(.skipRest):            skipRest()
-            case .announcement(let exercise):    activate(exercise)
-            case .set(let parsedSet):            appendSet(grouped(canonicalise(parsedSet, at: now())))
+            case .announcement(let exercise, _): activate(exercise)
+            case .set(let parsedSet, _):         appendSet(grouped(canonicalise(parsedSet, at: now())))
             case .command(.undo):                undoLast()
             case .command, .lowConfidence:       break
             }

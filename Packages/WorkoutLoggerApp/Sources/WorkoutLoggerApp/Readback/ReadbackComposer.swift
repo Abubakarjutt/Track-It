@@ -17,9 +17,9 @@ public func readbackPlan(
         return .earcon
     case .lowConfidence:
         return .speak("Didn't catch that.")
-    case .announcement(let exercise):
+    case .announcement(let exercise, _):
         return .speak("\(exercise.name).")
-    case .set(let set):
+    case .set(let set, _):
         switch style {
         case .earcon:
             return .earcon

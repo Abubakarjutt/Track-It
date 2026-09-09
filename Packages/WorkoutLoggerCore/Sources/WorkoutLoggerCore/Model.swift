@@ -147,8 +147,14 @@ public enum LowConfidenceReason: Equatable, Sendable {
 
 /// One interpreted item from a transcript.
 public enum ParseResult: Equatable, Sendable {
-    case set(ParsedSet)
-    case announcement(Exercise)
+    /// A parsed set and how sure the parser is of it: `1.0` for a clean regex
+    /// match with no fuzzy name resolution, otherwise the resolver's score for
+    /// the matched exercise name (`0.60 ... 1.0`). Readback reads a low-confidence
+    /// set back in full even for a familiar exercise (story 20).
+    case set(ParsedSet, confidence: Double)
+    /// An exercise switch and the resolver's confidence in the matched name
+    /// (`1.0` for an exact match). Same readback gate as `set`.
+    case announcement(Exercise, confidence: Double)
     case command(Command)
     /// The parser could not confidently place an exercise. `bestGuesses` is the
     /// resolver's ranked shortlist (may be empty) for the tap-select fallback.
