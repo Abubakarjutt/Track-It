@@ -30,6 +30,40 @@ struct WorkoutTemplateTests {
         #expect(engine.workout?.entries.isEmpty == true)
     }
 
+    @Test("a workout started from a template records the template's name, and persists it")
+    func templateIdentityRecorded() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout(from: WorkoutTemplate(name: "Push Day", items: [TemplateItem(exercise: bench)]))
+        #expect(engine.workout?.templateName == "Push Day")
+        #expect(store.saved.last?.templateName == "Push Day")   // the persisted revision carries it
+    }
+
+    @Test("a plain workout has no template name")
+    func plainStartHasNoTemplateName() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: .empty)
+        engine.startWorkout()
+        #expect(engine.workout?.templateName == nil)
+    }
+
+    @Test("a template whose name is blank leaves templateName nil, not an empty string")
+    func blankTemplateNameIsNil() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        engine.startWorkout(from: WorkoutTemplate(name: "   ", items: [TemplateItem(exercise: bench)]))
+        #expect(engine.workout?.templateName == nil)
+    }
+
+    @Test("resuming a templated workout keeps its template name")
+    func resumePreservesTemplateName() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(store: store, library: .empty)
+        engine.resume(Workout(startedAt: Date(timeIntervalSince1970: 1), templateName: "Push Day"))
+        #expect(engine.workout?.templateName == "Push Day")
+        #expect(store.saved.last?.templateName == "Push Day")
+    }
+
     @Test("the current rest target follows the active exercise's armed value, else the default")
     func templateRestTargetResolvesPerActiveExercise() {
         let store = InMemoryWorkoutStore()
