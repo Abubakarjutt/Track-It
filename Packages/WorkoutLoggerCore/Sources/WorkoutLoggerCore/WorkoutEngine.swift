@@ -282,10 +282,16 @@ public final class WorkoutEngine {
     /// (`pr.foldIn`), so a set logged after resuming is a record only if it beats
     /// both history and this workout.
     ///
-    /// Precondition: no workout is already open. The only caller is the launch
-    /// composition root, before any `startWorkout`. Unlike `startWorkout()` this
-    /// does not close a workout in progress — it overwrites `self.workout`
-    /// wholesale — so calling it mid-session would silently drop the open one.
+    /// Precondition: no workout is already open, and no `startWorkout` has run
+    /// this app run. The only caller is the launch composition root, before any
+    /// `startWorkout`. That contract is load-bearing for PR correctness:
+    /// `pr.reseed()` here reloads the floor from `provider?() ?? seed` — the same
+    /// pre-workout view of history a fresh `startWorkout` would take — which is
+    /// only equivalent to the launch `knownBests` because nothing has raised the
+    /// running bar yet. Unlike `startWorkout()` this does not close a workout in
+    /// progress — it overwrites `self.workout` wholesale — so calling it
+    /// mid-session would silently drop the open one *and* fold its work into the
+    /// resumed bar.
     public func resume(_ workout: Workout) {
         guard !workout.isEnded else { return }
 

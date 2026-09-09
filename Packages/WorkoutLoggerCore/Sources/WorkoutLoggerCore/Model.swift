@@ -6,6 +6,13 @@
 /// alone, so two library exercises that merely share a display name never collide
 /// in a value-keyed map — the stringly-typed-keying hazard the engine's per-
 /// exercise state used to carry.
+///
+/// The synthesised conformance compares `aliases` element-by-element, so it is
+/// sensitive to alias *order* as well as membership: reordering a curated
+/// exercise's alias list between releases breaks value-keyed identity against
+/// persisted entries exactly as adding or removing one does. That discontinuity
+/// is accepted and self-healing (the affected bar re-seeds from 0 until a fresh
+/// PR); a stable identity field would remove it — deferred to cluster 2.
 public struct Exercise: Equatable, Hashable, Sendable, Codable {
     public let name: String
     /// Alternative spoken names that resolve to this exercise, e.g. "OHP".

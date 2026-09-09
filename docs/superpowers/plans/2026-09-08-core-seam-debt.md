@@ -19,7 +19,7 @@ Every task's requirements implicitly include this section. Values copied verbati
 - **One core-reopen.** Land 1a–1f together on this branch; do not split them across later cycles. `WorkoutLoggerCore` is frozen again when this branch merges.
 - **No behaviour change to** load canonicalisation, the four orthogonal axes (ADR-0001), kilogram canonicalisation (ADR-0002), or the Epley formula `load * (30 + reps) / 30` (ADR-0003).
 - **No new dependencies.** Foundation and Swift Testing only.
-- **Swift 6 data-race clean.** `swift build` and `swift test` pass with the package's existing strictness. New stored closures stay `@Sendable` (see `knownBestsProvider`).
+- **Swift 6 data-race clean.** `swift build` and `swift test` pass with the package's existing strictness. (The `@Sendable` guidance on new stored closures below — Tasks 2, 6, 7 — was superseded during execution: `knownBestsProvider` and `PRTracker.provider` ship **non-`@Sendable`**, matching `WorkoutEngine`'s non-Sendable `store:` / `now:`. The engine is `@MainActor`-model-confined and never crosses an isolation boundary, so no `@Sendable` is required. See the SDD ledger's Task 2 ruling.)
 - **Vocabulary follows CONTEXT.md.** The stored-set type is `LoggedSet`, never `Set`. Do not introduce `session` as an identifier name (subsystem E review finding).
 - **Test at the seam.** Assert externally observable behaviour (public properties, returned values, persisted `Workout`); never internal call order or private state.
 - **Existing `WorkoutEngineTests` stay green unchanged after the 1e extraction (Task 7).** New behaviour gets new tests; the extraction proves itself by not disturbing the old ones.
