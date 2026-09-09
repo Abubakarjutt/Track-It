@@ -8,6 +8,23 @@ Every box is a real interaction, not a screenshot review.
 - [ ] `xcodegen generate` regenerates `Trackit.xcodeproj` with no diff to commit beyond expected.
 - [ ] `xcodebuild -scheme Trackit -destination 'generic/platform=iOS' build` — clean build, zero errors.
 - [ ] `xcodebuild -scheme Trackit -destination 'platform=iOS Simulator,name=iPhone 15' test` — `TrackitTests` green.
+      Simulator note: `HUDGlanceableStateUITests` runs anywhere;
+      `TapSelectInteractionUITests` requires mic hardware and only passes
+      on a device (the Simulator audio HAL aborts in `AURemoteIO::Initialize`).
+
+## Regression watch — Swift 6 isolation on audio/speech callbacks
+
+Standing up the build loop (branch `v1.1-cluster-5a-device-loop`) found two
+`EXC_BREAKPOINT` crashes: system callbacks inferred `@MainActor` that the SDK
+runs off-main. `SystemSpeechAuthorization` / `SystemSpeechRecognizer`
+`requestAuthorization` are fixed (`@Sendable`). One is **still open** —
+`AVAudioEngine.installTap`'s render block in `SystemSpeechRecognizer.beginUtterance()`
+captures a non-`Sendable` request, so the one-line `@Sendable` fix does not
+compile; it needs a small restructure. Until then:
+
+- [ ] Press-and-hold the talk button and speak a set → **no crash**; a
+      transcript comes back. (If it traps in `dispatch_assert_queue` on an
+      audio thread, the `installTap` block is still main-actor-isolated.)
 
 ## Voice loop (the product)
 
