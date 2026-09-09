@@ -154,6 +154,96 @@ struct WorkoutTemplateTests {
         #expect(engine.currentRestTargetSeconds == 210)
     }
 
+    @Test("resuming a workout whose template was deleted falls back to the engine default")
+    func resumeWithUnresolvableTemplateFallsBackToDefault() {
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(
+            store: store,
+            library: ExerciseLibrary([squat]),
+            restTarget: 120,
+            templateProvider: { _ in nil } // the lifter deleted "Lower" between sessions
+        )
+        let stale = Workout(
+            entries: [Entry(exercise: squat, sets: [
+                LoggedSet(
+                    loadType: .external, effort: .reps, role: .working,
+                    grouping: .straight, loadKilograms: 140, reps: 5,
+                    loggedAt: Date(timeIntervalSince1970: 1)
+                ),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 0),
+            templateName: "Lower"
+        )
+
+        engine.resume(stale)
+
+        #expect(engine.currentRestTargetSeconds == 120)
+    }
+
+    @Test("resuming a plain workout never consults the template provider")
+    func resumePlainWorkoutSkipsProvider() {
+        var lookups: [String] = []
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(
+            store: store,
+            library: ExerciseLibrary([squat]),
+            restTarget: 120,
+            templateProvider: { name in lookups.append(name); return nil }
+        )
+
+        engine.resume(Workout(
+            entries: [Entry(exercise: squat, sets: [
+                LoggedSet(
+                    loadType: .external, effort: .reps, role: .working,
+                    grouping: .straight, loadKilograms: 140, reps: 5,
+                    loggedAt: Date(timeIntervalSince1970: 1)
+                ),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 0)
+            // no templateName
+        ))
+
+        #expect(lookups.isEmpty)
+        #expect(engine.currentRestTargetSeconds == 120)
+    }
+
+    @Test("a re-armed template target drives the rest-done signal after a resume")
+    func resumeReArmedTargetDrivesDoneSignal() {
+        var clock = Date(timeIntervalSince1970: 0)
+        let template = WorkoutTemplate(name: "Lower", items: [
+            TemplateItem(exercise: squat, restTargetSeconds: 210),
+        ])
+        let store = InMemoryWorkoutStore()
+        let engine = WorkoutEngine(
+            store: store,
+            library: ExerciseLibrary([squat]),
+            restTarget: 120, // default would fire at 120s
+            templateProvider: { name in name == "Lower" ? template : nil },
+            now: { clock }
+        )
+        engine.resume(Workout(
+            entries: [Entry(exercise: squat, sets: [
+                LoggedSet(
+                    loadType: .external, effort: .reps, role: .working,
+                    grouping: .straight, loadKilograms: 140, reps: 5,
+                    loggedAt: Date(timeIntervalSince1970: 1)
+                ),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 0),
+            templateName: "Lower"
+        ))
+
+        // The resume reset the running rest period (story 20), so start one.
+        clock = Date(timeIntervalSince1970: 100)
+        engine.hear(["140 for 5"])
+
+        clock = Date(timeIntervalSince1970: 250) // 150s rest — past default 120, short of 210
+        #expect(engine.isRestTargetReached == false)
+
+        clock = Date(timeIntervalSince1970: 320) // 220s rest — past the re-armed 210
+        #expect(engine.isRestTargetReached == true)
+    }
+
     @Test("an exercise the template never mentions uses the engine default")
     func unlistedExerciseUsesDefault() {
         let curl = Exercise(name: "Curl", aliases: ["curl"])
