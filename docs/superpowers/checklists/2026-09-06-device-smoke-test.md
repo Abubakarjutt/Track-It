@@ -14,17 +14,19 @@ Every box is a real interaction, not a screenshot review.
 
 ## Regression watch — Swift 6 isolation on audio/speech callbacks
 
-Standing up the build loop (branch `v1.1-cluster-5a-device-loop`) found two
-`EXC_BREAKPOINT` crashes: system callbacks inferred `@MainActor` that the SDK
-runs off-main. `SystemSpeechAuthorization` / `SystemSpeechRecognizer`
-`requestAuthorization` are fixed (`@Sendable`). One is **still open** —
-`AVAudioEngine.installTap`'s render block in `SystemSpeechRecognizer.beginUtterance()`
-captures a non-`Sendable` request, so the one-line `@Sendable` fix does not
-compile; it needs a small restructure. Until then:
+Standing up the build loop found three `EXC_BREAKPOINT` crashes: system
+callbacks inferred `@MainActor` that the SDK runs off-main. All three are now
+fixed — `SystemSpeechAuthorization` / `SystemSpeechRecognizer`
+`requestAuthorization` closures are `@Sendable`, and the
+`AVAudioEngine.installTap` render block in `SystemSpeechRecognizer.beginUtterance()`
+captures the recognition request as `nonisolated(unsafe)` and is `@Sendable`
+(the request is fed only from the tap and always `removeTap`'d before
+`endUtterance()` touches it again). Verify on device that the record path is
+actually crash-free:
 
 - [ ] Press-and-hold the talk button and speak a set → **no crash**; a
-      transcript comes back. (If it traps in `dispatch_assert_queue` on an
-      audio thread, the `installTap` block is still main-actor-isolated.)
+      transcript comes back. (A trap in `dispatch_assert_queue` on an audio
+      thread means a capture-audio callback is still main-actor-isolated.)
 
 ## Voice loop (the product)
 
