@@ -8,6 +8,23 @@ struct WorkoutTemplateTests {
     private let bench = Exercise(name: "Bench", aliases: ["bench"])
     private let squat = Exercise(name: "Squat", aliases: ["squat"])
 
+    /// A not-yet-ended workout with one squat working set already logged — the
+    /// shape every resume test below starts from. `templateName` is stamped on
+    /// unless left nil (a plain, untemplated workout the lifter forgot to end).
+    private func staleSquatWorkout(templateName: String? = nil) -> Workout {
+        Workout(
+            entries: [Entry(exercise: squat, sets: [
+                LoggedSet(
+                    loadType: .external, effort: .reps, role: .working,
+                    grouping: .straight, loadKilograms: 140, reps: 5,
+                    loggedAt: Date(timeIntervalSince1970: 1)
+                ),
+            ])],
+            startedAt: Date(timeIntervalSince1970: 0),
+            templateName: templateName
+        )
+    }
+
     @Test("a template item carries an optional planned set count")
     func templateItemCarriesPlannedSets() {
         let item = TemplateItem(exercise: bench, plannedSets: 4, restTargetSeconds: 180)
@@ -133,21 +150,9 @@ struct WorkoutTemplateTests {
         )
 
         // The lifter trained squats from "Lower", forgot to end the workout, and
-        // the app is relaunching into it. The template value no longer exists as
-        // a live value — only its name, on the record.
-        let stale = Workout(
-            entries: [Entry(exercise: squat, sets: [
-                LoggedSet(
-                    loadType: .external, effort: .reps, role: .working,
-                    grouping: .straight, loadKilograms: 140, reps: 5,
-                    loggedAt: Date(timeIntervalSince1970: 1)
-                ),
-            ])],
-            startedAt: Date(timeIntervalSince1970: 0),
-            templateName: "Lower"
-        )
-
-        engine.resume(stale)
+        // the app is relaunching into it — only the template's name survives, on
+        // the record, not the template value that armed the targets.
+        engine.resume(staleSquatWorkout(templateName: "Lower"))
 
         // squat is the active exercise (its entry is last), so its armed 210
         // applies straight away — the lifter does not re-announce it.
@@ -163,19 +168,8 @@ struct WorkoutTemplateTests {
             restTarget: 120,
             templateProvider: { _ in nil } // the lifter deleted "Lower" between sessions
         )
-        let stale = Workout(
-            entries: [Entry(exercise: squat, sets: [
-                LoggedSet(
-                    loadType: .external, effort: .reps, role: .working,
-                    grouping: .straight, loadKilograms: 140, reps: 5,
-                    loggedAt: Date(timeIntervalSince1970: 1)
-                ),
-            ])],
-            startedAt: Date(timeIntervalSince1970: 0),
-            templateName: "Lower"
-        )
 
-        engine.resume(stale)
+        engine.resume(staleSquatWorkout(templateName: "Lower"))
 
         #expect(engine.currentRestTargetSeconds == 120)
     }
@@ -191,17 +185,7 @@ struct WorkoutTemplateTests {
             templateProvider: { name in lookups.append(name); return nil }
         )
 
-        engine.resume(Workout(
-            entries: [Entry(exercise: squat, sets: [
-                LoggedSet(
-                    loadType: .external, effort: .reps, role: .working,
-                    grouping: .straight, loadKilograms: 140, reps: 5,
-                    loggedAt: Date(timeIntervalSince1970: 1)
-                ),
-            ])],
-            startedAt: Date(timeIntervalSince1970: 0)
-            // no templateName
-        ))
+        engine.resume(staleSquatWorkout()) // no templateName
 
         #expect(lookups.isEmpty)
         #expect(engine.currentRestTargetSeconds == 120)
@@ -221,17 +205,7 @@ struct WorkoutTemplateTests {
             templateProvider: { name in name == "Lower" ? template : nil },
             now: { clock }
         )
-        engine.resume(Workout(
-            entries: [Entry(exercise: squat, sets: [
-                LoggedSet(
-                    loadType: .external, effort: .reps, role: .working,
-                    grouping: .straight, loadKilograms: 140, reps: 5,
-                    loggedAt: Date(timeIntervalSince1970: 1)
-                ),
-            ])],
-            startedAt: Date(timeIntervalSince1970: 0),
-            templateName: "Lower"
-        ))
+        engine.resume(staleSquatWorkout(templateName: "Lower"))
 
         // The resume reset the running rest period (story 20), so start one.
         clock = Date(timeIntervalSince1970: 100)

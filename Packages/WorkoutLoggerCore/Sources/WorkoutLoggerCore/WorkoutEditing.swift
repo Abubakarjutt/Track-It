@@ -85,7 +85,14 @@ extension Workout {
 
 /// Turns a completed workout into a reusable template (spec story 58): one item
 /// per entry, in order, each planned for the number of working sets it held.
-/// Loads and rest targets are dropped — a template holds neither.
+///
+/// Loads are dropped — a template never carries them. Rest targets come out
+/// `nil` too, but for a different reason: a `TemplateItem` *can* hold one, yet a
+/// completed `Workout` never recorded what the originating template's targets
+/// were (they lived on `RestTimer`, not on the record), so there is nothing here
+/// to copy. Recovering them would need either rest-target persistence on the
+/// workout or re-cloning the origin template by `templateName` — tracked as a
+/// cluster-1f follow-up, not done here.
 public func workoutTemplate(from workout: Workout, named name: String) -> WorkoutTemplate {
     WorkoutTemplate(
         name: name,

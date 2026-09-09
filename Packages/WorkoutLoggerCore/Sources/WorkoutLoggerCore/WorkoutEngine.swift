@@ -257,20 +257,7 @@ public final class WorkoutEngine {
     public func startWorkout(from template: WorkoutTemplate) {
         let trimmed = template.name.trimmingCharacters(in: .whitespacesAndNewlines)
         startWorkout(templateName: trimmed.isEmpty ? nil : trimmed)
-        armRestTargets(from: template)
-    }
-
-    /// Arms `rest` with a template's per-exercise rest targets, keyed on the whole
-    /// `Exercise` value (items with no target of their own are skipped; a
-    /// duplicated exercise keeps its last target). Shared by `startWorkout(from:)`
-    /// and the `resume(_:)` re-arm path.
-    private func armRestTargets(from template: WorkoutTemplate) {
-        rest.arm(Dictionary(
-            template.items.compactMap { item in
-                item.restTargetSeconds.map { (item.exercise, $0) }
-            },
-            uniquingKeysWith: { _, last in last }
-        ))
+        rest.arm(template.restTargetsByExercise)
     }
 
     /// The shared open-a-fresh-workout path. `templateName` is threaded into the
@@ -328,7 +315,7 @@ public final class WorkoutEngine {
         // resumed templated workout falls back to the engine default for every
         // exercise until the lifter re-announces each one.
         if let name = workout.templateName, let template = templateProvider?(name) {
-            armRestTargets(from: template)
+            rest.arm(template.restTargetsByExercise)
         }
 
         // Re-seed the PR bar, then fold this workout's existing work into it so a
