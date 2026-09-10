@@ -72,6 +72,24 @@ public final class SwiftDataWorkoutStore: WorkoutStore {
         }
     }
 
+    /// Removes the single `WorkoutRecord` keyed on `startedAt` (history-list
+    /// swipe-to-delete). A `startedAt` matching no record is a silent no-op;
+    /// a fetch/delete/save failure is surfaced through `lastSaveError`, as `save`.
+    public func deleteWorkout(startedAt: Date) {
+        lastSaveError = nil
+        do {
+            let key = startedAt
+            let descriptor = FetchDescriptor<WorkoutRecord>(
+                predicate: #Predicate { $0.startedAt == key }
+            )
+            guard let record = try context.fetch(descriptor).first else { return }
+            context.delete(record)
+            try context.save()
+        } catch {
+            lastSaveError = error
+        }
+    }
+
     public func history() -> [Workout] {
         let descriptor = FetchDescriptor<WorkoutRecord>(
             sortBy: [SortDescriptor(\.startedAt, order: .forward)]

@@ -132,6 +132,35 @@ struct WorkoutHistoryModelTests {
         #expect(model.isUnavailable)
     }
 
+    @Test("deleteWorkout removes just that workout and clears it from the detail screen")
+    func deleteOneWorkout() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        store.save(workout(started: 3_000, ended: 3_500, sets: [working(110, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows.first { $0.startedAt == Date(timeIntervalSince1970: 3_000) }!)
+
+        model.deleteWorkout(model.selected!)
+
+        #expect(model.rows.map(\.startedAt) == [Date(timeIntervalSince1970: 1_000)])
+        #expect(model.selected == nil)
+        #expect(store.history().map(\.startedAt) == [Date(timeIntervalSince1970: 1_000)])
+    }
+
+    @Test("deleting a workout other than the open one leaves the detail screen alone")
+    func deleteOtherWorkoutKeepsSelection() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        store.save(workout(started: 3_000, ended: 3_500, sets: [working(110, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows.first { $0.startedAt == Date(timeIntervalSince1970: 3_000) }!)
+
+        model.deleteWorkout(model.rows.first { $0.startedAt == Date(timeIntervalSince1970: 1_000) }!)
+
+        #expect(model.selected?.startedAt == Date(timeIntervalSince1970: 3_000))
+        #expect(model.rows.map(\.startedAt) == [Date(timeIntervalSince1970: 3_000)])
+    }
+
     @Test("deleteAllWorkoutData clears the rows and the store")
     func deleteAllWorkoutData() throws {
         let store = try inMemoryStore()
@@ -158,4 +187,5 @@ private final class FailingHistoryStore: WorkoutHistoryStore {
     func history() -> [Workout] { stored }
     func save(_ workout: Workout) { lastSaveError = Boom() } // never actually stores
     func deleteAllWorkouts() { stored = [] }
+    func deleteWorkout(startedAt: Date) { stored.removeAll { $0.startedAt == startedAt } }
 }
