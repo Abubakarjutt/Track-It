@@ -78,6 +78,25 @@ struct HealthKitSyncTests {
         #expect(store.saved.count == 1)
     }
 
+    @Test("a workout in the persistent synced store is not re-written by a fresh model (relaunch)")
+    @MainActor
+    func persistentDedupeAcrossRelaunch() async {
+        let store = FakeHealthKitWorkoutStore(status: .authorized)
+        let settings = InMemorySettingsStore()
+        settings.syncsToAppleHealth = true
+        let synced = InMemorySyncedWorkoutStore()
+
+        let first = HealthKitSyncModel(store: store, settings: settings, syncedStore: synced)
+        await first.workoutEnded(workout(minutes: 40))
+        #expect(store.saved.count == 1)
+        #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)))
+
+        // relaunch: a brand-new model over the same persistent synced store
+        let second = HealthKitSyncModel(store: store, settings: settings, syncedStore: synced)
+        await second.workoutEnded(workout(minutes: 40))
+        #expect(store.saved.count == 1)   // still just the one write
+    }
+
     @Test("turning sync on requests authorization and reflects the result")
     @MainActor
     func enablingRequestsAuthorization() async {
