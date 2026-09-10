@@ -145,6 +145,7 @@ public final class SettingsModel {
     public func deleteAllWorkoutData() {
         guard canDeleteAllWorkoutData else { return }
         historyModel.deleteAllWorkoutData()
+        healthSync.forgetSyncedWorkouts()
         session.refreshKnownBests()
     }
 

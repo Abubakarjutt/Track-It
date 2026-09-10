@@ -143,6 +143,25 @@ struct HealthKitSyncTests {
         #expect(store.saved.isEmpty)
     }
 
+    @Test("forgetSyncedWorkouts clears the dedupe ledger so ended workouts write again")
+    @MainActor
+    func forgetSyncedWorkoutsResetsLedger() async {
+        let store = FakeHealthKitWorkoutStore(status: .authorized)
+        let settings = InMemorySettingsStore()
+        settings.syncsToAppleHealth = true
+        let synced = InMemorySyncedWorkoutStore()
+        let model = HealthKitSyncModel(store: store, settings: settings, syncedStore: synced)
+
+        await model.workoutEnded(workout(minutes: 40))
+        #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)))
+
+        model.forgetSyncedWorkouts()
+
+        #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)) == false)
+        await model.workoutEnded(workout(minutes: 40))
+        #expect(store.saved.count == 2)   // wrote again after the ledger was cleared
+    }
+
     @Test("turning sync on requests authorization and reflects the result")
     @MainActor
     func enablingRequestsAuthorization() async {

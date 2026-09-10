@@ -260,6 +260,39 @@ struct WorkoutHistoryModelTests {
         #expect(model.selected == nil)
         #expect(store.history().isEmpty)
     }
+
+    @Test("onWorkoutEdited fires with the persisted workout after applyEdit and undo")
+    func onWorkoutEditedFiresAfterSuccessfulEdit() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows[0])
+
+        var edited: [[Int?]] = []
+        model.onWorkoutEdited = { edited.append($0.entries[0].sets.map(\.reps)) }
+
+        model.applyEdit { $0.replacingSet(at: 0, 0, with: working(90, 8)) }
+        model.undo()
+
+        #expect(edited == [[8], [5]] as [[Int?]])   // the edit, then the reverted state
+    }
+
+    @Test("onWorkoutEdited does not fire when the save fails")
+    func onWorkoutEditedSilentOnFailedSave() {
+        let w = Workout(entries: [Entry(exercise: bench, sets: [working(100, 5)])],
+                        startedAt: Date(timeIntervalSince1970: 1_000), endedAt: Date(timeIntervalSince1970: 1_500))
+        let store = FailingHistoryStore([w])
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows[0])
+
+        var fired = false
+        model.onWorkoutEdited = { _ in fired = true }
+
+        model.applyEdit { $0.annotated(with: "x") }
+
+        #expect(model.saveError != nil)
+        #expect(fired == false)
+    }
 }
 
 private final class FailingHistoryStore: WorkoutHistoryStore {

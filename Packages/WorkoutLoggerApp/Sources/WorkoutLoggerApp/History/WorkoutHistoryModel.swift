@@ -29,6 +29,11 @@ public final class WorkoutHistoryModel {
 
     @ObservationIgnored private let store: WorkoutHistoryStore
 
+    /// Called with the freshly-persisted workout after every successful
+    /// `applyEdit` / `undo` / `redo` — never on a failed save. The app wires
+    /// this to re-sync the edited workout into Apple Health.
+    @ObservationIgnored public var onWorkoutEdited: ((Workout) -> Void)?
+
     public init(store: WorkoutHistoryStore, historyUnavailable: Bool = false) {
         self.store = store
         self.isUnavailable = historyUnavailable
@@ -122,6 +127,7 @@ public final class WorkoutHistoryModel {
         mutateStacks()
         reload()
         selected = rows.first { $0.startedAt == workout.startedAt }
+        onWorkoutEdited?(workout)
     }
 
     private func clearEditHistory() {
