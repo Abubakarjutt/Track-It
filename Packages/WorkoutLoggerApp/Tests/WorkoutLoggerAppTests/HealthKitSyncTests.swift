@@ -97,6 +97,27 @@ struct HealthKitSyncTests {
         #expect(store.saved.count == 1)   // still just the one write
     }
 
+    @Test("a failed Health write is not marked synced, so the next end retries it")
+    @MainActor
+    func failedWriteIsNotMarkedSynced() async {
+        struct Boom: Error {}
+        let store = FakeHealthKitWorkoutStore(status: .authorized)
+        store.nextWriteError = Boom()
+        let settings = InMemorySettingsStore()
+        settings.syncsToAppleHealth = true
+        let synced = InMemorySyncedWorkoutStore()
+        let model = HealthKitSyncModel(store: store, settings: settings, syncedStore: synced)
+
+        await model.workoutEnded(workout(minutes: 40))
+        #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)) == false)
+        #expect(store.saved.isEmpty)
+
+        store.nextWriteError = nil          // the transient failure clears
+        await model.workoutEnded(workout(minutes: 40))
+        #expect(store.saved.count == 1)     // retried and landed
+        #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)))
+    }
+
     @Test("turning sync on requests authorization and reflects the result")
     @MainActor
     func enablingRequestsAuthorization() async {

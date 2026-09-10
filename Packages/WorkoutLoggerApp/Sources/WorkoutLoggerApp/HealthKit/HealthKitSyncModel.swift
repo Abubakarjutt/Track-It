@@ -42,7 +42,8 @@ public final class HealthKitSyncModel {
     public func workoutEnded(_ workout: Workout) async {
         guard canSync else { return }
         guard !syncedStore.isSynced(startedAt: workout.startedAt) else { return }
-        store.write(workout, activeEnergyKilocalories: estimatedActiveEnergyKilocalories(for: workout))
+        await store.write(workout, activeEnergyKilocalories: estimatedActiveEnergyKilocalories(for: workout))
+        guard store.lastWriteError == nil else { return }   // a failed write retries on the next end
         syncedStore.markSynced(startedAt: workout.startedAt)
      }
 

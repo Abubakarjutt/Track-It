@@ -12,6 +12,10 @@ public final class FakeHealthKitWorkoutStore: HealthKitWorkoutStore {
     public private(set) var lastWriteError: Error?
     public private(set) var authorizationRequests = 0
 
+    /// Test hook: set to make the next `write` / `resync` fail — it records the
+    /// error in `lastWriteError` and stores nothing. Clear it to let writes land.
+    public var nextWriteError: Error?
+
     /// Each written workout with its rough active-energy figure, in write order.
     public struct SavedWorkout {
         public let workout: Workout
@@ -34,7 +38,9 @@ public final class FakeHealthKitWorkoutStore: HealthKitWorkoutStore {
         status = statusAfterRequest
       }
 
-    public func write(_ workout: Workout, activeEnergyKilocalories: Double) {
+    public func write(_ workout: Workout, activeEnergyKilocalories: Double) async {
+        lastWriteError = nextWriteError
+        guard nextWriteError == nil else { return }
         saved.append(SavedWorkout(workout: workout, activeEnergyKilocalories: activeEnergyKilocalories))
       }
 
