@@ -63,6 +63,30 @@ extension Workout {
         return copy
     }
 
+    /// A copy with the set at `entryIndex` / `setIndex` assigned into superset run
+    /// `runID` — its `supersetRunID` is set and its `grouping` becomes `.superset`
+    /// (a `.superset` grouping without an id would lose the run membership, per
+    /// `LoggedSet.supersetRunID`). Completes story 26: the grouping control can
+    /// clear a run marker; this puts a set *into* a chosen run. An out-of-range
+    /// index is a no-op.
+    public func joiningSet(at entryIndex: Int, _ setIndex: Int, intoRun runID: Int) -> Workout {
+        editingSet(at: entryIndex, setIndex) {
+            $0.supersetRunID = runID
+            $0.grouping = .superset
+        }
+    }
+
+    /// The distinct superset run ids present in this workout, ascending — the
+    /// choices a run picker offers. Empty when nothing is grouped.
+    public var supersetRunIDs: [Int] {
+        Set(entries.flatMap { $0.sets.compactMap(\.supersetRunID) }).sorted()
+    }
+
+    /// The id to mint for a brand-new run: one past the highest in use, or `1`.
+    public var nextSupersetRunID: Int {
+        (supersetRunIDs.max() ?? 0) + 1
+    }
+
     /// Whether `(entryIndex, setIndex)` addresses a real set in this workout.
     private func hasSet(at entryIndex: Int, _ setIndex: Int) -> Bool {
         entries.indices.contains(entryIndex)
