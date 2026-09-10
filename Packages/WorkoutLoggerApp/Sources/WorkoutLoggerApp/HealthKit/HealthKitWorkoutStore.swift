@@ -25,6 +25,10 @@ public protocol HealthKitWorkoutStore: AnyObject {
     /// Write one strength-training workout. `async` so a caller can await the
     /// real HealthKit round-trip and then read `lastWriteError` (nil ⇒ landed).
     func write(_ workout: Workout, activeEnergyKilocalories: Double) async
+    /// Replace the copy of this workout already in Health — same `startedAt` key,
+    /// possibly new duration and energy. The real store deletes the prior sample
+    /// and writes a fresh one; `lastWriteError` reports the outcome as for `write`.
+    func resync(_ workout: Workout, activeEnergyKilocalories: Double) async
 }
 
 /// The default store: writes nothing and reports no HealthKit present. Used when
@@ -37,4 +41,5 @@ final class NoopHealthKitWorkoutStore: HealthKitWorkoutStore {
     public var lastWriteError: Error? { nil }
     public func request() async {}
     public func write(_ workout: Workout, activeEnergyKilocalories: Double) async {}
+    public func resync(_ workout: Workout, activeEnergyKilocalories: Double) async {}
 }

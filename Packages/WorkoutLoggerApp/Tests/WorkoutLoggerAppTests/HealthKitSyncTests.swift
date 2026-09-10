@@ -118,6 +118,31 @@ struct HealthKitSyncTests {
         #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)))
     }
 
+    @Test("editing a workout that is already in Health re-syncs it with the new duration")
+    @MainActor
+    func editedSyncedWorkoutResyncs() async {
+        let (model, store, _) = makeModel()
+
+        await model.workoutEnded(workout(minutes: 40))
+        #expect(store.saved.count == 1)
+        #expect(store.saved.first?.activeEnergyKilocalories == 240)   // 40 * 6.0
+
+        await model.workoutEdited(workout(minutes: 60))
+
+        #expect(store.saved.count == 2)
+        #expect(store.saved.last?.activeEnergyKilocalories == 360)     // 60 * 6.0
+    }
+
+    @Test("editing a workout that was never synced does nothing")
+    @MainActor
+    func editedUnsyncedWorkoutIsNoOp() async {
+        let (model, store, _) = makeModel()
+
+        await model.workoutEdited(workout(minutes: 60))
+
+        #expect(store.saved.isEmpty)
+    }
+
     @Test("turning sync on requests authorization and reflects the result")
     @MainActor
     func enablingRequestsAuthorization() async {

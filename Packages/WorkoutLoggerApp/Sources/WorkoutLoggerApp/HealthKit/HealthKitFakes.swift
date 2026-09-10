@@ -44,6 +44,12 @@ public final class FakeHealthKitWorkoutStore: HealthKitWorkoutStore {
         saved.append(SavedWorkout(workout: workout, activeEnergyKilocalories: activeEnergyKilocalories))
       }
 
+    /// The fake keeps no prior sample to delete, so a re-sync is just another
+    /// recorded write — a test reads `saved` to see the updated duration/energy.
+    public func resync(_ workout: Workout, activeEnergyKilocalories: Double) async {
+        await write(workout, activeEnergyKilocalories: activeEnergyKilocalories)
+      }
+
     /// Test hook: simulate a permission change the user makes elsewhere
     /// (the Health app, or iOS Settings) that the model re-reads.
     public func set(_ status: HealthKitSyncStatus) {

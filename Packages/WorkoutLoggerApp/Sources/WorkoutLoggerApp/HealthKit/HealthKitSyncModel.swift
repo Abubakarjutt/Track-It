@@ -47,6 +47,15 @@ public final class HealthKitSyncModel {
         syncedStore.markSynced(startedAt: workout.startedAt)
      }
 
+     /// A workout was edited after the fact. If it is already in Health, replace
+     /// that copy with the new duration and energy; if it never synced, do
+     /// nothing — it will sync in full whenever it next ends.
+    public func workoutEdited(_ workout: Workout) async {
+        guard canSync else { return }
+        guard syncedStore.isSynced(startedAt: workout.startedAt) else { return }
+        await store.resync(workout, activeEnergyKilocalories: estimatedActiveEnergyKilocalories(for: workout))
+     }
+
      /// Flip the opt-in flag. Enabling requests HealthKit authorization and
      /// reflects the result; disabling stops all further writes immediately
      /// without touching what is already in Health.
