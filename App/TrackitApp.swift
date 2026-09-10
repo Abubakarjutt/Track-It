@@ -70,8 +70,13 @@ struct TrackitApp: App {
 
         let healthSync = HealthKitSyncModel(
             store: SystemHealthKitWorkoutStore(),
-            settings: settingsStore
+            settings: settingsStore,
+            syncedStore: SwiftDataSyncedWorkoutStore(context: context)
           )
+        // A post-hoc edit to a workout that is already in Health re-syncs it.
+        historyModel.onWorkoutEdited = { workout in
+            Task { @MainActor in await healthSync.workoutEdited(workout) }
+        }
 
         let telemetryUploader = TelemetryUploader(
             transport: TelemetryHTTPTransport(),
