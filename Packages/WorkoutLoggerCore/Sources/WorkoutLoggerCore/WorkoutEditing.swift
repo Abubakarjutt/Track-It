@@ -87,6 +87,37 @@ extension Workout {
         (supersetRunIDs.max() ?? 0) + 1
     }
 
+    /// A copy with the set at `entryIndex` / `setIndex` moved onto a different
+    /// effort measure and/or load type — the axis corrections subsystem D's set
+    /// editor left out (ADR-0001: the two axes are independent). Pass `nil` for
+    /// an axis to leave it alone.
+    ///
+    /// Changing `effort` nulls the measured values that stop applying (a set
+    /// corrected reps → duration keeps `durationSeconds`, drops `reps` and
+    /// `distanceMeters`). Changing `loadType` to `.bodyweight` drops
+    /// `loadKilograms` — the load *is* the body; `.external` / `.added` /
+    /// `.assisted` keep the number (the external load, the added plate, the
+    /// assistance). An out-of-range index is a no-op.
+    public func changingSet(
+        at entryIndex: Int,
+        _ setIndex: Int,
+        effort: EffortMeasure? = nil,
+        loadType: LoadType? = nil
+    ) -> Workout {
+        editingSet(at: entryIndex, setIndex) { set in
+            if let effort {
+                set.effort = effort
+                if effort != .reps { set.reps = nil }
+                if effort != .duration { set.durationSeconds = nil }
+                if effort != .distance { set.distanceMeters = nil }
+            }
+            if let loadType {
+                set.loadType = loadType
+                if loadType == .bodyweight { set.loadKilograms = nil }
+            }
+        }
+    }
+
     /// Whether `(entryIndex, setIndex)` addresses a real set in this workout.
     private func hasSet(at entryIndex: Int, _ setIndex: Int) -> Bool {
         entries.indices.contains(entryIndex)
