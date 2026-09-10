@@ -33,7 +33,9 @@ struct SettingsModelHealthTests {
             )
         let history = WorkoutHistoryModel(store: store)
         let recorder = TelemetryRecorder(sink: telemetry, settings: settingsStore)
-        let sync = HealthKitSyncModel(store: health, settings: settingsStore)
+        let sync = HealthKitSyncModel(
+            store: health, settings: settingsStore, syncedStore: InMemorySyncedWorkoutStore()
+        )
         let settings = SettingsModel(
             settingsStore: settingsStore,
             libraryStore: InMemoryExerciseLibraryStore(),
