@@ -56,6 +56,37 @@ struct WorkoutDetailView: View {
                                 }
                             }
                         }
+                        // Axis corrections the full set editor leaves out (ADR-0001:
+                        // effort measure and load type are independent axes) plus
+                        // "put this set into a superset run" — story 26's second half,
+                        // the grouping toggle in SetEditView can only clear a run.
+                        .contextMenu {
+                            Menu("Effort measure") {
+                                Button("Reps") { changeSet(entryIndex, setIndex, effort: .reps) }
+                                Button("Duration") { changeSet(entryIndex, setIndex, effort: .duration) }
+                                Button("Distance") { changeSet(entryIndex, setIndex, effort: .distance) }
+                            }
+                            Menu("Load type") {
+                                Button("External") { changeSet(entryIndex, setIndex, loadType: .external) }
+                                Button("Bodyweight") { changeSet(entryIndex, setIndex, loadType: .bodyweight) }
+                                Button("Added") { changeSet(entryIndex, setIndex, loadType: .added) }
+                                Button("Assisted") { changeSet(entryIndex, setIndex, loadType: .assisted) }
+                            }
+                            Menu("Superset run") {
+                                ForEach(current.supersetRunIDs, id: \.self) { runID in
+                                    Button("Run \(runID)") {
+                                        historyModel.applyEdit {
+                                            $0.joiningSet(at: entryIndex, setIndex, intoRun: runID)
+                                        }
+                                    }
+                                }
+                                Button("New run") {
+                                    historyModel.applyEdit {
+                                        $0.joiningSet(at: entryIndex, setIndex, intoRun: $0.nextSupersetRunID)
+                                    }
+                                }
+                            }
+                        }
                     }
                 } header: {
                     NavigationLink(entry.exerciseName) {
@@ -82,5 +113,32 @@ struct WorkoutDetailView: View {
         }
         .navigationTitle(workout.startedAt.formatted(date: .abbreviated, time: .omitted))
         .onAppear { noteText = current.note ?? "" }
+        .toolbar {
+            // Per-workout edit history — the stacks live on the model and are
+            // cleared when a different workout is opened, so these only ever
+            // step through edits made to *this* record.
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { historyModel.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .disabled(!historyModel.canUndo)
+                Button { historyModel.redo() } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                }
+                .disabled(!historyModel.canRedo)
+            }
+        }
+    }
+
+    /// One atomic effort-measure and/or load-type correction on the addressed
+    /// set (`nil` leaves that axis alone). Wraps `Workout.changingSet` in the
+    /// standard `applyEdit` save loop so the menu buttons stay one-liners.
+    private func changeSet(
+        _ entryIndex: Int, _ setIndex: Int,
+        effort: EffortMeasure? = nil, loadType: LoadType? = nil
+    ) {
+        historyModel.applyEdit {
+            $0.changingSet(at: entryIndex, setIndex, effort: effort, loadType: loadType)
+        }
     }
 }
