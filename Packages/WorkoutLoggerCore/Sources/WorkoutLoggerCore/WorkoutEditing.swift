@@ -141,20 +141,26 @@ extension Workout {
 /// Turns a completed workout into a reusable template (spec story 58): one item
 /// per entry, in order, each planned for the number of working sets it held.
 ///
-/// Loads are dropped — a template never carries them. Rest targets come out
-/// `nil` too, but for a different reason: a `TemplateItem` *can* hold one, yet a
-/// completed `Workout` never recorded what the originating template's targets
-/// were (they lived on `RestTimer`, not on the record), so there is nothing here
-/// to copy. Recovering them would need either rest-target persistence on the
-/// workout or re-cloning the origin template by `templateName` — tracked as a
-/// cluster-1f follow-up, not done here.
-public func workoutTemplate(from workout: Workout, named name: String) -> WorkoutTemplate {
+/// Loads are dropped — a template never carries them. Rest targets are *not*
+/// recoverable from the workout itself (they lived on `RestTimer`, never on the
+/// record), so the caller passes them in `restTargets`, keyed on the whole
+/// `Exercise`: the save-as-template screen has the origin template in hand, or
+/// re-loads it by `Workout.templateName` via the engine's `templateProvider`
+/// (cluster 2). An exercise absent from `restTargets` — or the default empty
+/// map — leaves that item's `restTargetSeconds` `nil`, exactly as before
+/// (cluster 3, gap moved here from 1f).
+public func workoutTemplate(
+    from workout: Workout,
+    named name: String,
+    restTargets: [Exercise: TimeInterval] = [:]
+) -> WorkoutTemplate {
     WorkoutTemplate(
         name: name,
         items: workout.entries.map { entry in
             TemplateItem(
                 exercise: entry.exercise,
-                plannedSets: entry.sets.filter { $0.role == .working }.count
+                plannedSets: entry.sets.filter { $0.role == .working }.count,
+                restTargetSeconds: restTargets[entry.exercise]
             )
         }
     )

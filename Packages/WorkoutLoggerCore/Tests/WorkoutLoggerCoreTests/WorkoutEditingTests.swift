@@ -102,6 +102,36 @@ struct WorkoutEditingTests {
         #expect(template.items.allSatisfy { $0.restTargetSeconds == nil })
     }
 
+    @Test("saving as a template carries rest targets supplied for the workout's exercises")
+    func templateFromWorkoutCarriesRestTargets() {
+        let source = Workout(
+            entries: [
+                Entry(exercise: bench, sets: [set(load: 100, reps: 5)]),
+                Entry(exercise: squat, sets: [set(load: 140, reps: 5)]),
+            ],
+            startedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        let template = workoutTemplate(
+            from: source, named: "Wednesday",
+            restTargets: [bench: 90, squat: 210]
+        )
+
+        #expect(template.items.map(\.restTargetSeconds) == [90, 210])
+    }
+
+    @Test("an exercise with no supplied rest target still comes out nil")
+    func templateFromWorkoutMissingRestTargetIsNil() {
+        let source = Workout(
+            entries: [Entry(exercise: bench, sets: [set(load: 100, reps: 5)])],
+            startedAt: Date(timeIntervalSince1970: 0)
+        )
+
+        let template = workoutTemplate(from: source, named: "x", restTargets: [squat: 210])
+
+        #expect(template.items[0].restTargetSeconds == nil)
+    }
+
     @Test("a workout and its individual sets can carry freeform notes")
     func annotating() {
         let original = workout([set(load: 100, reps: 5), set(load: 100, reps: 5)])
