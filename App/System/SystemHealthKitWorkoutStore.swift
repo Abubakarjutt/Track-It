@@ -37,13 +37,14 @@ final class SystemHealthKitWorkoutStore: HealthKitWorkoutStore {
         try? await store.requestAuthorization(toShare: shareTypes, read: [])
      }
 
-    func write(_ workout: Workout, activeEnergyKilocalories: Double) {
+    func write(_ workout: Workout, activeEnergyKilocalories: Double) async {
+        lastWriteError = nil
         let started = workout.startedAt
         guard let ended = workout.endedAt else { return }
 
         let energy = HKQuantity(unit: .kilocalorie(), doubleValue: activeEnergyKilocalories)
         // `HKWorkout.init` is soft-deprecated in favour of `HKWorkoutBuilder`; the
-        // builder is fully async and this adapter is a synchronous write-once
+        // builder is a multi-call session and this adapter is a single write
         // seam, so the classic initializer stays until a builder migration is
         // scoped on its own.
         let sample = HKWorkout(
@@ -56,8 +57,8 @@ final class SystemHealthKitWorkoutStore: HealthKitWorkoutStore {
             metadata: nil
         )
 
-        store.save(sample) { [weak self] _, error in
-            Task { @MainActor in self?.lastWriteError = error }
+        lastWriteError = await withCheckedContinuation { continuation in
+            store.save(sample) { _, error in continuation.resume(returning: error) }
         }
      }
 }
