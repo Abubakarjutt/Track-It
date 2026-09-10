@@ -270,4 +270,45 @@ struct WorkoutEditingTests {
         #expect(original.joiningSet(at: 0, 5, intoRun: 1) == original)
         #expect(original.joiningSet(at: 9, 0, intoRun: 1) == original)
     }
+
+    // MARK: - Cluster 3: correct a recorded set's effort measure / load type
+
+    @Test("switching a set's effort measure clears the values that no longer apply")
+    func changingEffortMeasure() {
+        // A reps set being corrected to a timed hold.
+        let repsSet = LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            loadKilograms: 60, reps: 10, loggedAt: Date(timeIntervalSince1970: 0)
+        )
+        let edited = workout([repsSet]).changingSet(at: 0, 0, effort: .duration)
+
+        #expect(edited.entries[0].sets[0].effort == .duration)
+        #expect(edited.entries[0].sets[0].reps == nil)           // no longer meaningful
+        #expect(edited.entries[0].sets[0].distanceMeters == nil)
+        #expect(edited.entries[0].sets[0].loadKilograms == 60)   // load axis is orthogonal
+    }
+
+    @Test("switching a set's load type to bodyweight drops the load number")
+    func changingLoadTypeToBodyweight() {
+        let edited = workout([set(load: 100, reps: 5)]).changingSet(at: 0, 0, loadType: .bodyweight)
+
+        #expect(edited.entries[0].sets[0].loadType == .bodyweight)
+        #expect(edited.entries[0].sets[0].loadKilograms == nil)
+        #expect(edited.entries[0].sets[0].reps == 5)             // effort axis untouched
+    }
+
+    @Test("switching load type to assisted keeps the load number (it is the assistance)")
+    func changingLoadTypeToAssistedKeepsLoad() {
+        let edited = workout([set(load: 20, reps: 8)]).changingSet(at: 0, 0, loadType: .assisted)
+
+        #expect(edited.entries[0].sets[0].loadType == .assisted)
+        #expect(edited.entries[0].sets[0].loadKilograms == 20)
+    }
+
+    @Test("changing a set at an out-of-range index changes nothing")
+    func changingOutOfRangeIsNoOp() {
+        let original = workout([set(load: 100, reps: 5)])
+        #expect(original.changingSet(at: 0, 7, effort: .distance) == original)
+        #expect(original.changingSet(at: 5, 0, loadType: .assisted) == original)
+    }
 }
