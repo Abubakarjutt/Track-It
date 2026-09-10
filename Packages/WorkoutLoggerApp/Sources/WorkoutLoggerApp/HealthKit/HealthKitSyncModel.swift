@@ -56,6 +56,14 @@ public final class HealthKitSyncModel {
         await store.resync(workout, activeEnergyKilocalories: estimatedActiveEnergyKilocalories(for: workout))
      }
 
+     /// Forget which workouts have been written to Health. Called when the user
+     /// erases all workout data, so a later re-import is not silently deduped
+     /// against workouts that no longer exist. Does not touch what is already in
+     /// the Health app.
+    public func forgetSyncedWorkouts() {
+        syncedStore.forgetAll()
+     }
+
      /// Flip the opt-in flag. Enabling requests HealthKit authorization and
      /// reflects the result; disabling stops all further writes immediately
      /// without touching what is already in Health.

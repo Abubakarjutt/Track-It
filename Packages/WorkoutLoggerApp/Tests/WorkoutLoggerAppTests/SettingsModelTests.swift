@@ -278,4 +278,36 @@ struct SettingsModelTests {
         #expect(history.rows.isEmpty)
         #expect(store.history().isEmpty)
     }
+
+    @Test("delete-all also clears the Apple Health dedupe ledger, so a re-import can happen")
+    func deleteClearsHealthLedger() throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self, ExerciseRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let engine = WorkoutEngine(store: store, library: ExerciseLibrary([bench]))
+        let session = WorkoutSessionModel(
+            engine: engine, transcriptSource: ScriptedTranscriptSource([]),
+            readbackVoice: SpyReadbackVoice(), haptics: SpyHaptics(),
+            library: ExerciseLibrary([bench]), knownBestExercises: [],
+            history: { store.history() }
+        )
+        let history = WorkoutHistoryModel(store: store)
+        let synced = InMemorySyncedWorkoutStore()
+        synced.markSynced(startedAt: Date(timeIntervalSince1970: 0))
+        let healthSync = HealthKitSyncModel(
+            store: NoopHealthKitWorkoutStore(), settings: InMemorySettingsStore(), syncedStore: synced
+        )
+        let settings = SettingsModel(
+            settingsStore: InMemorySettingsStore(), libraryStore: InMemoryExerciseLibraryStore(),
+            speechAuthorization: FakeSpeechAuthorization(), session: session,
+            historyModel: history, seed: [bench], healthSync: healthSync
+        )
+
+        settings.deleteAllWorkoutData()
+
+        #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)) == false)
+    }
 }
