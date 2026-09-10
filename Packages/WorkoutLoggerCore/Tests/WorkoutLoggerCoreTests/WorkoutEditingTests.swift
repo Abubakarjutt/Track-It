@@ -244,4 +244,30 @@ struct WorkoutEditingTests {
         let original = workout([set(load: 100, reps: 5), set(load: 100, reps: 5)])
         #expect(original.movingSet(at: 0, 0, toExercise: bench) == original)
     }
+
+    // MARK: - Cluster 3: join a set into a superset run (story 26, second half)
+
+    @Test("joining a set into a run stamps the run id and marks it a superset")
+    func joiningIntoRun() {
+        let inRun = LoggedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .superset,
+            loadKilograms: 40, reps: 12, supersetRunID: 2,
+            loggedAt: Date(timeIntervalSince1970: 0)
+        )
+        let loose = set(load: 100, reps: 5) // .straight, no run
+        let original = workout([inRun, loose])
+
+        let edited = original.joiningSet(at: 0, 1, intoRun: 2)
+
+        #expect(edited.entries[0].sets[1].supersetRunID == 2)
+        #expect(edited.entries[0].sets[1].grouping == .superset)
+        #expect(edited.entries[0].sets[0] == inRun) // the other set untouched
+    }
+
+    @Test("joining a set at an out-of-range index changes nothing")
+    func joiningOutOfRangeIsNoOp() {
+        let original = workout([set(load: 100, reps: 5)])
+        #expect(original.joiningSet(at: 0, 5, intoRun: 1) == original)
+        #expect(original.joiningSet(at: 9, 0, intoRun: 1) == original)
+    }
 }
