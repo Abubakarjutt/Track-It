@@ -10,6 +10,9 @@ struct HistoryListView: View {
     let store: WorkoutHistoryStore
     let historyUnavailable: Bool
 
+    /// The row a swipe-to-delete is awaiting confirmation for, or `nil`.
+    @State private var pendingDelete: Workout?
+
     var body: some View {
         Group {
             if historyModel.isUnavailable {
@@ -29,6 +32,32 @@ struct HistoryListView: View {
                     } label: {
                         row(for: workout)
                     }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            pendingDelete = workout
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
+                // Deleting a whole workout (spec story 35) is unrecoverable —
+                // the detail-screen undo stack only spans set edits — so it
+                // asks first.
+                .confirmationDialog(
+                    "Delete this workout?",
+                    isPresented: Binding(
+                        get: { pendingDelete != nil },
+                        set: { if !$0 { pendingDelete = nil } }
+                    ),
+                    presenting: pendingDelete
+                ) { workout in
+                    Button("Delete", role: .destructive) {
+                        historyModel.deleteWorkout(workout)
+                        pendingDelete = nil
+                    }
+                    Button("Cancel", role: .cancel) { pendingDelete = nil }
+                } message: { _ in
+                    Text("This removes the whole workout and every set in it. It can't be undone.")
                 }
             }
         }
