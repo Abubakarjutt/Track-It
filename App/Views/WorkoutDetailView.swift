@@ -62,15 +62,15 @@ struct WorkoutDetailView: View {
                         // the grouping toggle in SetEditView can only clear a run.
                         .contextMenu {
                             Menu("Effort measure") {
-                                Button("Reps") { changeSet(entryIndex, setIndex, effort: .reps) }
-                                Button("Duration") { changeSet(entryIndex, setIndex, effort: .duration) }
-                                Button("Distance") { changeSet(entryIndex, setIndex, effort: .distance) }
+                                Button("Reps") { historyModel.applyEdit { $0.changingSet(at: entryIndex, setIndex, effort: .reps) } }
+                                Button("Duration") { historyModel.applyEdit { $0.changingSet(at: entryIndex, setIndex, effort: .duration) } }
+                                Button("Distance") { historyModel.applyEdit { $0.changingSet(at: entryIndex, setIndex, effort: .distance) } }
                             }
                             Menu("Load type") {
-                                Button("External") { changeSet(entryIndex, setIndex, loadType: .external) }
-                                Button("Bodyweight") { changeSet(entryIndex, setIndex, loadType: .bodyweight) }
-                                Button("Added") { changeSet(entryIndex, setIndex, loadType: .added) }
-                                Button("Assisted") { changeSet(entryIndex, setIndex, loadType: .assisted) }
+                                Button("External") { historyModel.applyEdit { $0.changingSet(at: entryIndex, setIndex, loadType: .external) } }
+                                Button("Bodyweight") { historyModel.applyEdit { $0.changingSet(at: entryIndex, setIndex, loadType: .bodyweight) } }
+                                Button("Added") { historyModel.applyEdit { $0.changingSet(at: entryIndex, setIndex, loadType: .added) } }
+                                Button("Assisted") { historyModel.applyEdit { $0.changingSet(at: entryIndex, setIndex, loadType: .assisted) } }
                             }
                             Menu("Superset run") {
                                 ForEach(current.supersetRunIDs, id: \.self) { runID in
@@ -127,18 +127,6 @@ struct WorkoutDetailView: View {
                 }
                 .disabled(!historyModel.canRedo)
             }
-        }
-    }
-
-    /// One atomic effort-measure and/or load-type correction on the addressed
-    /// set (`nil` leaves that axis alone). Wraps `Workout.changingSet` in the
-    /// standard `applyEdit` save loop so the menu buttons stay one-liners.
-    private func changeSet(
-        _ entryIndex: Int, _ setIndex: Int,
-        effort: EffortMeasure? = nil, loadType: LoadType? = nil
-    ) {
-        historyModel.applyEdit {
-            $0.changingSet(at: entryIndex, setIndex, effort: effort, loadType: loadType)
         }
     }
 }

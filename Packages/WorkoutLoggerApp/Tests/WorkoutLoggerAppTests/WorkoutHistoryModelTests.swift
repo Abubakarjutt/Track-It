@@ -172,6 +172,20 @@ struct WorkoutHistoryModelTests {
         #expect(model.selected?.note == "second")
     }
 
+    @Test("re-opening the same workout keeps its undo history")
+    func reopenSameWorkoutKeepsUndoHistory() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows[0])
+        model.applyEdit { $0.annotated(with: "x") }
+        #expect(model.canUndo == true)
+
+        model.open(model.rows[0])   // navigate away and back to the same record
+        #expect(model.canUndo == true)
+        #expect(model.selected?.note == "x")
+    }
+
     @Test("opening a workout resets the undo history")
     func openResetsUndoHistory() throws {
         let store = try inMemoryStore()
@@ -200,6 +214,21 @@ struct WorkoutHistoryModelTests {
         #expect(model.rows.map(\.startedAt) == [Date(timeIntervalSince1970: 1_000)])
         #expect(model.selected == nil)
         #expect(store.history().map(\.startedAt) == [Date(timeIntervalSince1970: 1_000)])
+    }
+
+    @Test("a failed delete is surfaced and leaves the workout on screen")
+    func deleteFailureIsSurfaced() {
+        let w = Workout(entries: [Entry(exercise: bench, sets: [working(100, 5)])],
+                        startedAt: Date(timeIntervalSince1970: 1_000), endedAt: Date(timeIntervalSince1970: 1_500))
+        let store = FailingHistoryStore([w])
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows[0])
+
+        model.deleteWorkout(model.selected!)
+
+        #expect(model.saveError != nil)
+        #expect(model.selected?.startedAt == Date(timeIntervalSince1970: 1_000))  // still open
+        #expect(model.rows.map(\.startedAt) == [Date(timeIntervalSince1970: 1_000)])  // still listed
     }
 
     @Test("deleting a workout other than the open one leaves the detail screen alone")
@@ -242,5 +271,5 @@ private final class FailingHistoryStore: WorkoutHistoryStore {
     func history() -> [Workout] { stored }
     func save(_ workout: Workout) { lastSaveError = Boom() } // never actually stores
     func deleteAllWorkouts() { stored = [] }
-    func deleteWorkout(startedAt: Date) { stored.removeAll { $0.startedAt == startedAt } }
+    func deleteWorkout(startedAt: Date) { lastSaveError = Boom() } // never actually deletes
 }

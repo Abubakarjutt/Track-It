@@ -50,8 +50,12 @@ public final class WorkoutHistoryModel {
     }
 
     public func open(_ workout: Workout) {
+        let isDifferentWorkout = selected?.startedAt != workout.startedAt
         selected = rows.first { $0.startedAt == workout.startedAt }
-        clearEditHistory()
+        // Re-entering the same detail screen (the history list fires `open` on
+        // every `.onAppear`) must not throw away edits made this visit — only a
+        // genuinely different workout resets the stacks.
+        if isDifferentWorkout { clearEditHistory() }
     }
 
     /// Delete one workout from history, then reload. If it was the workout open
@@ -60,6 +64,11 @@ public final class WorkoutHistoryModel {
     /// its sets).
     public func deleteWorkout(_ workout: Workout) {
         store.deleteWorkout(startedAt: workout.startedAt)
+        if let error = store.lastSaveError {
+            saveError = String(describing: error)
+            return
+        }
+        saveError = nil
         if selected?.startedAt == workout.startedAt {
             selected = nil
             clearEditHistory()
@@ -73,17 +82,10 @@ public final class WorkoutHistoryModel {
     /// skips the reload, keeping the on-screen state honest about what persisted.
     public func applyEdit(_ transform: (Workout) -> Workout) {
         guard let current = selected else { return }
-        let edited = transform(current)
-        store.save(edited)
-        if let error = store.lastSaveError {
-            saveError = String(describing: error)
-            return
+        persist(transform(current)) {
+            undoStack.append(current)   // the pre-edit state to fall back to
+            redoStack.removeAll()       // a new edit forks the timeline
         }
-        saveError = nil
-        undoStack.append(current)   // the pre-edit state to fall back to
-        redoStack.removeAll()       // a new edit forks the timeline
-        reload()
-        selected = rows.first { $0.startedAt == edited.startedAt }
     }
 
     /// Restore the workout to its state before the last edit, persisting the
@@ -91,31 +93,35 @@ public final class WorkoutHistoryModel {
     /// surfaced in `saveError` and leaves the stacks intact.
     public func undo() {
         guard let current = selected, let previous = undoStack.last else { return }
-        store.save(previous)
-        if let error = store.lastSaveError {
-            saveError = String(describing: error)
-            return
+        persist(previous) {
+            undoStack.removeLast()
+            redoStack.append(current)
         }
-        saveError = nil
-        undoStack.removeLast()
-        redoStack.append(current)
-        reload()
-        selected = rows.first { $0.startedAt == previous.startedAt }
     }
 
     /// Re-apply the most recently undone edit. Mirror of `undo()`.
     public func redo() {
         guard let current = selected, let next = redoStack.last else { return }
-        store.save(next)
+        persist(next) {
+            redoStack.removeLast()
+            undoStack.append(current)
+        }
+    }
+
+    /// Save `workout`; on success run `mutateStacks`, reload the list, and
+    /// re-select the row for `workout`. A store failure is surfaced in
+    /// `saveError` and nothing else changes — the shared spine of `applyEdit`,
+    /// `undo`, and `redo`, which differ only in how they move the two stacks.
+    private func persist(_ workout: Workout, _ mutateStacks: () -> Void) {
+        store.save(workout)
         if let error = store.lastSaveError {
             saveError = String(describing: error)
             return
         }
         saveError = nil
-        redoStack.removeLast()
-        undoStack.append(current)
+        mutateStacks()
         reload()
-        selected = rows.first { $0.startedAt == next.startedAt }
+        selected = rows.first { $0.startedAt == workout.startedAt }
     }
 
     private func clearEditHistory() {
