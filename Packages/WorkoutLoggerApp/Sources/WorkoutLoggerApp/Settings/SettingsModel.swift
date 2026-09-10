@@ -53,7 +53,10 @@ public final class SettingsModel {
         self.failedUtterances = failedUtterances
             ?? FailedUtteranceModel(store: NoopFailedUtteranceStore(), settings: settingsStore)
         self.healthSync = healthSync
-            ?? HealthKitSyncModel(store: NoopHealthKitWorkoutStore(), settings: settingsStore)
+            ?? HealthKitSyncModel(
+                store: NoopHealthKitWorkoutStore(), settings: settingsStore,
+                syncedStore: InMemorySyncedWorkoutStore()
+            )
 
         libraryStore.seedIfEmpty(seed)
         self._unit = settingsStore.defaultUnit

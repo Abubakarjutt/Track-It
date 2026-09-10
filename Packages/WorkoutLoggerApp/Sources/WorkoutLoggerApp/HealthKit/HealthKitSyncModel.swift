@@ -22,10 +22,15 @@ public final class HealthKitSyncModel {
      /// Mirrors `settings.syncsToAppleHealth` so a view re-renders on toggle.
     public private(set) var isEnabled: Bool
 
+    /// `syncedStore` is required, not defaulted: the whole point of this cluster
+    /// is a *persistent* dedupe ledger, and a silent in-memory fallback would
+    /// reintroduce the cross-launch double-post it exists to prevent. Callers
+    /// with no real store (the Settings fallback, tests) pass
+    /// `InMemorySyncedWorkoutStore()` explicitly.
     public init(
         store: HealthKitWorkoutStore,
         settings: SettingsStore,
-        syncedStore: SyncedWorkoutStore = InMemorySyncedWorkoutStore()
+        syncedStore: SyncedWorkoutStore
     ) {
         self.store = store
         self.settings = settings
@@ -40,7 +45,7 @@ public final class HealthKitSyncModel {
      /// Write a just-completed Workout, unless it is already in Health. Silent
      /// unless `canSync`.
     public func workoutEnded(_ workout: Workout) async {
-        guard canSync else { return }
+        guard canSync, workout.endedAt != nil else { return }
         guard !syncedStore.isSynced(startedAt: workout.startedAt) else { return }
         await store.write(workout, activeEnergyKilocalories: estimatedActiveEnergyKilocalories(for: workout))
         guard store.lastWriteError == nil else { return }   // a failed write retries on the next end
@@ -49,7 +54,10 @@ public final class HealthKitSyncModel {
 
      /// A workout was edited after the fact. If it is already in Health, replace
      /// that copy with the new duration and energy; if it never synced, do
-     /// nothing — it will sync in full whenever it next ends.
+     /// nothing — it will sync in full whenever it next ends. A failed re-sync
+     /// leaves the pre-edit copy in Health (the store writes the new sample
+     /// before removing the old one) and the ledger entry intact, so the next
+     /// edit of the same workout retries.
     public func workoutEdited(_ workout: Workout) async {
         guard canSync else { return }
         guard syncedStore.isSynced(startedAt: workout.startedAt) else { return }

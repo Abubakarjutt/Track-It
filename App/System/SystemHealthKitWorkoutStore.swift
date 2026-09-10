@@ -63,36 +63,48 @@ final class SystemHealthKitWorkoutStore: HealthKitWorkoutStore {
         }
      }
 
-    /// Delete the prior sample for this workout (matched on its external-UUID
-    /// stamp), then write the edited one. A failed delete still reports through
-    /// `lastWriteError`; a missing prior sample is not an error.
+    /// Replace this workout's sample in Health with an edited one. Writes the
+    /// new sample *first*, then deletes the prior one(s) — so a failed write
+    /// leaves the original copy untouched rather than a gap. The stale samples
+    /// are captured before the write because the new one carries the same
+    /// external-UUID stamp; deleting by that stamp afterwards can't tell them
+    /// apart.
     func resync(_ workout: Workout, activeEnergyKilocalories: Double) async {
-        await deleteWorkout(externalID: Self.externalID(for: workout.startedAt))
-        guard lastWriteError == nil else { return }
+        let stale = await samples(externalID: Self.externalID(for: workout.startedAt))
         await write(workout, activeEnergyKilocalories: activeEnergyKilocalories)
+        guard lastWriteError == nil, !stale.isEmpty else { return }
+        lastWriteError = await withCheckedContinuation { continuation in
+            store.delete(stale) { _, error in continuation.resume(returning: error) }
+        }
      }
 
     /// trackit's stable handle on a workout it wrote to Health: the start
-    /// instant to whole seconds. Same `startedAt` ⇒ same id ⇒ the edit replaces
-    /// rather than duplicates.
+    /// instant at full precision (the sync ledger keys on the same instant, so a
+    /// coarser id here could collide for two workouts less than a second apart).
+    /// Same `startedAt` ⇒ same id ⇒ an edit replaces rather than duplicates.
     private static func externalID(for startedAt: Date) -> String {
-        "trackit-\(Int(startedAt.timeIntervalSince1970))"
+        "trackit-\(startedAt.timeIntervalSinceReferenceDate.bitPattern)"
      }
 
-    private func deleteWorkout(externalID: String) async {
+    /// The workout samples currently in Health under `externalID` (usually one,
+    /// none before the first write). An empty result on failure is acceptable —
+    /// `resync` then simply skips the delete and leaves the extra copy for the
+    /// next edit to clean up.
+    private func samples(externalID: String) async -> [HKSample] {
         let predicate = HKQuery.predicateForObjects(
             withMetadataKey: HKMetadataKeyExternalUUID,
             allowedValues: [externalID]
         )
-        lastWriteError = await withCheckedContinuation { continuation in
-            store.deleteObjects(of: HKObjectType.workoutType(), predicate: predicate) { _, _, error in
-                // "no objects matched" is not a failure — nothing to replace yet.
-                if let error, (error as NSError).code == HKError.errorNoData.rawValue {
-                    continuation.resume(returning: nil)
-                } else {
-                    continuation.resume(returning: error)
-                }
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: HKObjectType.workoutType(),
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, _ in
+                continuation.resume(returning: samples ?? [])
             }
+            store.execute(query)
         }
      }
 }

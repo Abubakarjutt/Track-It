@@ -38,7 +38,10 @@ struct HealthKitSyncTests {
         let store = FakeHealthKitWorkoutStore(status: storeStatus, statusAfterRequest: statusAfterRequest)
         let settings = InMemorySettingsStore()
         settings.syncsToAppleHealth = enabled
-        return (HealthKitSyncModel(store: store, settings: settings), store, settings)
+        return (
+            HealthKitSyncModel(store: store, settings: settings, syncedStore: InMemorySyncedWorkoutStore()),
+            store, settings
+        )
     }
 
     @Test("a completed workout is written once when sync is on and authorized")
@@ -116,6 +119,21 @@ struct HealthKitSyncTests {
         await model.workoutEnded(workout(minutes: 40))
         #expect(store.saved.count == 1)     // retried and landed
         #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)))
+    }
+
+    @Test("a workout that never ended is not written and not marked synced")
+    @MainActor
+    func nonEndedWorkoutIsNotSynced() async {
+        let store = FakeHealthKitWorkoutStore(status: .authorized)
+        let settings = InMemorySettingsStore()
+        settings.syncsToAppleHealth = true
+        let synced = InMemorySyncedWorkoutStore()
+        let model = HealthKitSyncModel(store: store, settings: settings, syncedStore: synced)
+
+        await model.workoutEnded(workout(minutes: 40, ended: false))
+
+        #expect(store.saved.isEmpty)
+        #expect(synced.isSynced(startedAt: Date(timeIntervalSince1970: 0)) == false)
     }
 
     @Test("editing a workout that is already in Health re-syncs it with the new duration")
