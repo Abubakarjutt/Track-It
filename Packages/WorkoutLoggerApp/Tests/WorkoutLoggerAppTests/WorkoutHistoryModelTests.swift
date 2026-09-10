@@ -132,6 +132,61 @@ struct WorkoutHistoryModelTests {
         #expect(model.isUnavailable)
     }
 
+    @Test("undo restores the pre-edit workout; redo re-applies it")
+    func undoRedoRoundTrip() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5), working(100, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows[0])
+        #expect(model.canUndo == false)
+
+        model.applyEdit { $0.replacingSet(at: 0, 1, with: working(90, 8)) }
+        #expect(model.selected?.entries[0].sets.map(\.reps) == [5, 8])
+        #expect(model.canUndo == true)
+        #expect(model.canRedo == false)
+
+        model.undo()
+        #expect(model.selected?.entries[0].sets.map(\.reps) == [5, 5])
+        #expect(store.history().first?.entries[0].sets.map(\.reps) == [5, 5]) // persisted
+        #expect(model.canUndo == false)
+        #expect(model.canRedo == true)
+
+        model.redo()
+        #expect(model.selected?.entries[0].sets.map(\.reps) == [5, 8])
+        #expect(model.canRedo == false)
+    }
+
+    @Test("a fresh edit after an undo clears the redo stack")
+    func newEditClearsRedo() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows[0])
+
+        model.applyEdit { $0.annotated(with: "first") }
+        model.undo()
+        #expect(model.canRedo == true)
+
+        model.applyEdit { $0.annotated(with: "second") }
+        #expect(model.canRedo == false)
+        #expect(model.selected?.note == "second")
+    }
+
+    @Test("opening a workout resets the undo history")
+    func openResetsUndoHistory() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        store.save(workout(started: 3_000, ended: 3_500, sets: [working(110, 5)]))
+        let model = WorkoutHistoryModel(store: store)
+        model.open(model.rows.first { $0.startedAt == Date(timeIntervalSince1970: 3_000) }!)
+        model.applyEdit { $0.annotated(with: "x") }
+        #expect(model.canUndo == true)
+
+        model.open(model.rows.first { $0.startedAt == Date(timeIntervalSince1970: 1_000) }!)
+        #expect(model.canUndo == false)
+        #expect(model.canRedo == false)
+    }
+
     @Test("deleteWorkout removes just that workout and clears it from the detail screen")
     func deleteOneWorkout() throws {
         let store = try inMemoryStore()

@@ -19,6 +19,14 @@ public final class WorkoutHistoryModel {
     /// distinct from an empty history (spec story 10 vs 9).
     public let isUnavailable: Bool
 
+    /// Whether there is a prior state to `undo()` / a undone state to `redo()`.
+    /// Both stacks hold whole-`Workout` snapshots for the currently open workout
+    /// and are cleared whenever a different workout is opened or one is deleted.
+    public var canUndo: Bool { !undoStack.isEmpty }
+    public var canRedo: Bool { !redoStack.isEmpty }
+    private var undoStack: [Workout] = []
+    private var redoStack: [Workout] = []
+
     @ObservationIgnored private let store: WorkoutHistoryStore
 
     public init(store: WorkoutHistoryStore, historyUnavailable: Bool = false) {
@@ -37,11 +45,13 @@ public final class WorkoutHistoryModel {
     public func deleteAllWorkoutData() {
         store.deleteAllWorkouts()
         selected = nil
+        clearEditHistory()
         reload()
     }
 
     public func open(_ workout: Workout) {
         selected = rows.first { $0.startedAt == workout.startedAt }
+        clearEditHistory()
     }
 
     /// Delete one workout from history, then reload. If it was the workout open
@@ -50,7 +60,10 @@ public final class WorkoutHistoryModel {
     /// its sets).
     public func deleteWorkout(_ workout: Workout) {
         store.deleteWorkout(startedAt: workout.startedAt)
-        if selected?.startedAt == workout.startedAt { selected = nil }
+        if selected?.startedAt == workout.startedAt {
+            selected = nil
+            clearEditHistory()
+        }
         reload()
     }
 
@@ -67,7 +80,46 @@ public final class WorkoutHistoryModel {
             return
         }
         saveError = nil
+        undoStack.append(current)   // the pre-edit state to fall back to
+        redoStack.removeAll()       // a new edit forks the timeline
         reload()
         selected = rows.first { $0.startedAt == edited.startedAt }
+    }
+
+    /// Restore the workout to its state before the last edit, persisting the
+    /// revert as its own save. A no-op with nothing to undo; a failed save is
+    /// surfaced in `saveError` and leaves the stacks intact.
+    public func undo() {
+        guard let current = selected, let previous = undoStack.last else { return }
+        store.save(previous)
+        if let error = store.lastSaveError {
+            saveError = String(describing: error)
+            return
+        }
+        saveError = nil
+        undoStack.removeLast()
+        redoStack.append(current)
+        reload()
+        selected = rows.first { $0.startedAt == previous.startedAt }
+    }
+
+    /// Re-apply the most recently undone edit. Mirror of `undo()`.
+    public func redo() {
+        guard let current = selected, let next = redoStack.last else { return }
+        store.save(next)
+        if let error = store.lastSaveError {
+            saveError = String(describing: error)
+            return
+        }
+        saveError = nil
+        redoStack.removeLast()
+        undoStack.append(current)
+        reload()
+        selected = rows.first { $0.startedAt == next.startedAt }
+    }
+
+    private func clearEditHistory() {
+        undoStack.removeAll()
+        redoStack.removeAll()
     }
 }
