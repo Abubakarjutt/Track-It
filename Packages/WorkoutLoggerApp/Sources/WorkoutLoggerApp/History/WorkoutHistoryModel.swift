@@ -44,6 +44,16 @@ public final class WorkoutHistoryModel {
         selected = rows.first { $0.startedAt == workout.startedAt }
     }
 
+    /// Delete one workout from history, then reload. If it was the workout open
+    /// on the detail screen, `selected` is cleared so nothing renders a record
+    /// that no longer exists (spec story 35 — delete a whole workout, not just
+    /// its sets).
+    public func deleteWorkout(_ workout: Workout) {
+        store.deleteWorkout(startedAt: workout.startedAt)
+        if selected?.startedAt == workout.startedAt { selected = nil }
+        reload()
+    }
+
     /// Applies `transform` to the open workout, saves it, and reloads the list.
     /// The store never throws — it records a failure in `lastSaveError` — so on a
     /// failure this discards the edited copy, leaves `selected` as it was, and

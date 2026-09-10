@@ -10,6 +10,9 @@ public protocol WorkoutHistoryStore: AnyObject {
     /// Remove every stored workout. Anything else in the same container
     /// (the exercise library) is left untouched.
     func deleteAllWorkouts()
+    /// Remove the one stored workout keyed on `startedAt`. A `startedAt` that
+    /// matches nothing is a no-op. A failure is surfaced through `lastSaveError`.
+    func deleteWorkout(startedAt: Date)
     var lastSaveError: Error? { get }
 }
 
