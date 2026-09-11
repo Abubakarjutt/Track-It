@@ -157,8 +157,24 @@ smoke coverage.
 
 ## Status
 
-- [ ] OPEN QUESTIONS resolved (esp. Q1 mapping location, Q2 taxonomy, Q3 counting rules)
-- [ ] 7g-1: `workingSetCount` + workout rollups + progress-screen surfacing (TDD)
-- [ ] 7g-2: `MuscleGroup` + mapping + `muscleGroupSetVolume` + weekly view (TDD)
-- [ ] `CONTEXT.md` updated with any new terms
-- [ ] update parent roadmap + memory
+- [x] 7g-1: `workingSetCount` + workout rollups + progress-screen surfacing (TDD) — **delivered 2026-09-11**.
+  - Core: `ExerciseSession.workingSetCount` (Σ working sets; warmups excluded — timed / distance /
+    bodyweight working sets still count), populated by the `exerciseProgress` fold, plus
+    `workoutSetVolume(_:)` and `workoutSetVolumeByExercise(_:)` (keyed by the whole `Exercise`
+    value; a second entry for one exercise merges; a warmup-only / empty workout → 0 / ∅; the
+    two rollups reconcile — the sum of the per-exercise counts equals the whole-workout total).
+  - App: `ExerciseProgressProjection.setVolumeSeries` (one point per session, independent of
+    tonnage) + `Comparison.setVolumeDelta`; surfaced as a "Set volume" chart and a "Sets: ±N"
+    row on the per-exercise progress screen.
+  - Tests: Core 169 (5 new `ExerciseProgressTests`); App 245 (the projection suite was extended
+    with set-volume assertions — no new suite). Both green.
+  - Counting rules pinned by 7g-1 (Q3): warmups excluded; timed / distance / bodyweight working
+    sets DO count (Q3, "training stimulus"); a superset / dropset round counts one per working
+    set entry, not one per round.
+- [x] `CONTEXT.md` — no new term for 7g-1: "Set volume" is already defined there; the
+  per-muscle-group term is 7g-2's concern and lands with it.
+- [ ] OPEN QUESTIONS for 7g-2: Q1 (mapping location), Q2 (muscle taxonomy), Q4 (fractional
+  attribution), Q5 (unclassified bucket), Q6 (week boundary). 7g-2 is gated on these; a
+  `writing-plans` pass is recommended before it.
+- [ ] 7g-2: `MuscleGroup` + mapping + `muscleGroupSetVolume` + weekly view (TDD) — **gated on Q1/Q2**.
+- [ ] update parent roadmap + memory (deferred with 7g-2).
