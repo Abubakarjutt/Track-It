@@ -36,6 +36,11 @@ public struct ExerciseSession: Equatable, Sendable {
     /// signal for bodyweight work (story 25), where `volumeKilograms` is zero.
     /// Warmups and timed / distance sets do not count.
     public let workingReps: Int
+
+     /// The session's set volume — the count of its working sets (CONTEXT.md
+     /// "Set volume"), the per-session training-stimulus gauge, distinct from
+     /// `volumeKilograms` (tonnage). Warmups do not count.
+    public let workingSetCount: Int
     /// The heaviest working set's load this session, or `nil` when no working set
     /// carried a stored load (a pure bodyweight session). Warmups do not count.
     public let topSetLoadKilograms: Double?
@@ -48,12 +53,14 @@ public struct ExerciseSession: Equatable, Sendable {
         date: Date,
         volumeKilograms: Double,
         workingReps: Int,
+        workingSetCount: Int,
         topSetLoadKilograms: Double?,
         bestEstimatedOneRepMaxKilograms: Double?
     ) {
         self.date = date
         self.volumeKilograms = volumeKilograms
         self.workingReps = workingReps
+        self.workingSetCount = workingSetCount
         self.topSetLoadKilograms = topSetLoadKilograms
         self.bestEstimatedOneRepMaxKilograms = bestEstimatedOneRepMaxKilograms
     }
@@ -70,6 +77,7 @@ public func exerciseProgress(for exercise: Exercise, across history: [Workout]) 
         let working = sets.filter { $0.role == .working }
         let volume = working.reduce(0.0) { running, set in running + volumeContribution(of: set) }
         let reps = working.reduce(0) { running, set in running + (set.reps ?? 0) }
+        let workingSetCount = working.count
         let topSet = working.compactMap(\.loadKilograms).max()
         let bestEstimate = working.compactMap(epleyEstimate(of:)).max()
 
@@ -77,11 +85,46 @@ public func exerciseProgress(for exercise: Exercise, across history: [Workout]) 
             date: workout.startedAt,
             volumeKilograms: volume,
             workingReps: reps,
+            workingSetCount: workingSetCount,
             topSetLoadKilograms: topSet,
             bestEstimatedOneRepMaxKilograms: bestEstimate
         )
     }
     return ExerciseProgress(sessions: sessions)
+}
+
+/// The count of a workout's working sets — its total **set volume** (CONTEXT.md
+/// "Set volume"), the per-workout training-stimulus gauge, distinct from Volume
+/// (Σ load × reps). Warmups never count; a superset / dropset contributes one
+/// per working set entry it holds, so a two-exercise superset round is two sets.
+public func workoutSetVolume(_ workout: Workout) -> Int {
+    workout.entries.reduce(0) { running, entry in
+        running + workingSets(of: entry).count
+     }
+}
+
+/// Each exercise's working-set count across one workout, keyed by the whole
+/// `Exercise` value (it is `Hashable`). A second entry for the same exercise
+/// merges into one count; an exercise with no working set is absent from the
+/// result. Warmups never count. Reconciles with `workoutSetVolume(_:)` — the
+/// latter is the sum of this function's values.
+public func workoutSetVolumeByExercise(_ workout: Workout) -> [Exercise: Int] {
+    var counts: [Exercise: Int] = [:]
+    for entry in workout.entries {
+        let working = workingSets(of: entry).count
+        if working > 0 {
+            counts[entry.exercise, default: 0] += working
+         }
+     }
+    return counts
+}
+
+/// The working sets of one entry — the sets that count toward volume and set
+/// volume. Warmups are excluded everywhere (CONTEXT.md "Set volume"); a set with
+/// no reps (timed / distance) or no load (bodyweight) is still a working set and
+/// still counts toward set volume.
+private func workingSets(of entry: Entry) -> [LoggedSet] {
+    entry.sets.filter { $0.role == .working }
 }
 
 /// How much one working set adds to Volume: `load × reps`. A set with no stored
