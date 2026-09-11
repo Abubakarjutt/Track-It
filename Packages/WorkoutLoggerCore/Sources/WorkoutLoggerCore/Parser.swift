@@ -11,12 +11,18 @@
 //   3. straight set          "<load> [unit] for <reps>" — begins with a digit
 //   4. inline set            "<name> <load> [unit] for <reps>"
 //   5. duration / distance   "<name> for <n> seconds" / "<name> <n> metres"
-//   6. bodyweight set        "<name> <n>" — the loosest pattern; must stay last
-//   7. bare name             switch the active exercise
+//   6. relative forms          "again" / "up 10" / "add a plate" / "back-off" —
+//                            lean on context.previousSet; before bodyweight so a
+//                             "<word> <n>" delta isn't read as a name + reps
+//   7. bodyweight set          "<name> <n>" — the loosest name+number pattern
+//   8. bare name              switch the active exercise
 //
 // If the generic "<name> …" forms ran before the keyword forms their greedy
 // leading group would swallow "warmup", "plus", etc.; likewise the bodyweight
-// form would swallow every "<name> <number>" utterance if it ran earlier.
+// form would swallow every "<name> <number>" utterance if it ran earlier. And the
+// relative forms (step 6) must precede that bodyweight form — "up 10" / "add 10"
+// otherwise read as a bare name plus a rep count — while still running after every
+// explicit name+load form, so a fully-specified set wins over a relative one.
 
 import Foundation
 
@@ -42,6 +48,29 @@ private func isPlausible(_ set: ParsedSet) -> Bool {
     if let load = set.load, load > maxPlausibleLoad { return false }
     return true
 }
+
+// One standard plate per unit, the increment "add a plate" / "drop a plate" moves
+// by — a 20 kg plate, a 45 lb (competition) plate. Back-off rounds to the smallest
+// fractional plate each side owns, 2.5 kg / 2.5 lb. See ADR-0004.
+private func plateSize(for unit: MassUnit) -> Double {
+    switch unit {
+    case .kilograms: return 20
+    case .pounds: return 45
+    }
+}
+private func backOffRoundIncrement(for unit: MassUnit) -> Double {
+    switch unit {
+    case .kilograms, .pounds: return 2.5
+    }
+}
+
+// Back-off is the previous load at this fraction, rounded to the smallest plate.
+private let backOffFraction = 0.9
+
+// Verbatim-repeat phrasings, normalised to lowercase.
+private let repeatPhrases: Set<String> = [
+    "again", "repeat", "same", "same again", "same as last", "same as last time",
+]
 
 // MARK: - Patterns
 //
@@ -179,8 +208,16 @@ public func parse(
         }
     }
 
-    // 6. Bodyweight set — "<name> <n>". A number above the plausible-reps ceiling
-    //    is a dropped "for", not a real rep count.
+     // 6. Relative / contextual forms — lean on the previous set (cluster 1b).
+     //    They run after every explicit name+load form so a fully-specified set
+     //    wins, but before the bodyweight form so "up 10" / "add 10" aren't read
+     //    as a bare name plus a rep count.
+    if let relative = relativeSet(text, context: context) {
+        return relative
+       }
+
+       // 7. Bodyweight set — "<name> <n>". A number above the plausible-reps ceiling
+       //    is a dropped "for", not a real rep count.
     if let match = try? bodyweightSetPattern.wholeMatch(in: text),
        let reps = intCapture(match, "reps") {
         switch matchInlineExercise(String(stringCapture(match, "name") ?? ""), in: library) {
@@ -196,7 +233,7 @@ public func parse(
         }
     }
 
-    // 7. A bare exercise name or alias — switch the active exercise. A leading
+     // 8. A bare exercise name or alias — switch the active exercise. A leading
     //    "now" / "next" filler ("now squats") is dropped first. Anything the
     //    resolver still can't place is reported low-confidence rather than dropped.
     switch resolve(withoutAnnouncementLead(text), in: library) {
@@ -282,4 +319,84 @@ private func spokenMassUnit(_ word: Substring?) -> MassUnit? {
     default:
         return nil
     }
+}
+
+// MARK: - Relative / contextual forms
+
+/// The half of the parser context cluster 1b wired but `parse` never consumed: a
+/// grammar that leans on `context.previousSet`. Each form is deterministic given
+/// the previous set, so a match reports full confidence; with no previous set (or
+/// no load to adjust) it returns nil so `parse` falls through and the utterance is
+/// not silently logged. See ADR-0004 for the plate sizes and the back-off rounding.
+private func relativeSet(_ text: String, context: WorkoutContext) -> [ParseResult]? {
+    guard let previous = context.previousSet else { return nil }
+    let unit = previous.loadUnit ?? context.unit
+    let lowered = text.lowercased()
+
+       // Repeat the previous set verbatim — the whole set, even a loadless one.
+    if repeatPhrases.contains(lowered) {
+        return [.set(previous, confidence: 1.0)]
+       }
+
+      // Every remaining form adjusts a load, so a loadless previous set (a timed or
+      // distance effort) fails closed and is not a load form.
+    guard let base = previous.load else { return nil }
+
+    let backOff = rx(#"back[ -]?off(?:\s+set)?"#)
+    let addPlate = rx(#"add\s+(?:a\s+|an\s+)?plate"#)
+    let dropPlate = rx(#"drop\s+(?:a\s+|an\s+)?plate"#)
+    let raise = rx(#"(?:up|add|plus)\s+(?<delta>\d+(?:\.\d+)?)"#)
+    let lowerLeading = rx(#"(?:down|drop|less)\s+(?<delta>\d+(?:\.\d+)?)"#)
+    let lowerTrailing = rx(#"(?<delta>\d+(?:\.\d+)?)\s+less"#)
+
+       // Back-off: the previous load at 90%, rounded to the smallest plate.
+    if let _ = try? backOff.wholeMatch(in: text) {
+        let target = round(base * backOffFraction, to: backOffRoundIncrement(for: unit))
+        return adjusted(previous, load: target, unit: unit, context: context)
+       }
+
+       // Plate steps — one standard plate per unit (ADR-0004).
+    if let _ = try? addPlate.wholeMatch(in: text) {
+        return adjusted(previous, load: base + plateSize(for: unit), unit: unit, context: context)
+       }
+    if let _ = try? dropPlate.wholeMatch(in: text) {
+        return adjusted(previous, load: max(0, base - plateSize(for: unit)), unit: unit, context: context)
+       }
+
+       // Numeric delta in the context unit; a negative result floors at zero.
+    if let match = try? raise.wholeMatch(in: text), let delta = doubleCapture(match, "delta") {
+        return adjusted(previous, load: base + delta, unit: unit, context: context)
+       }
+    if let match = try? lowerLeading.wholeMatch(in: text), let delta = doubleCapture(match, "delta") {
+        return adjusted(previous, load: max(0, base - delta), unit: unit, context: context)
+       }
+    if let match = try? lowerTrailing.wholeMatch(in: text), let delta = doubleCapture(match, "delta") {
+        return adjusted(previous, load: max(0, base - delta), unit: unit, context: context)
+       }
+
+    return nil
+}
+
+/// A previous set with its load replaced by `load` (in `unit`), axes preserved.
+/// The result is re-checked for plausibility so an out-of-range delta is flagged,
+/// not logged; on an implausible value the active exercise is the best guess.
+private func adjusted(
+      _ previous: ParsedSet,
+    load: Double,
+    unit: MassUnit,
+    context: WorkoutContext
+) -> [ParseResult] {
+    var set = previous
+    set.load = load
+    set.loadUnit = unit
+    guard isPlausible(set) else {
+        return [.lowConfidence(reason: .implausibleValue, bestGuesses: context.activeExercise.map { [$0] } ?? [])]
+       }
+    return [.set(set, confidence: 1.0)]
+}
+
+/// The nearest multiple of `increment` (half-up), used to round a back-off load to
+/// a plate.
+private func round(_ value: Double, to increment: Double) -> Double {
+      (value / increment).rounded() * increment
 }
