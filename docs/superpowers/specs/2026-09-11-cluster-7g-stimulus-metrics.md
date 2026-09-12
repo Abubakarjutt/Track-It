@@ -107,45 +107,69 @@ smoke coverage.
 
 ## OPEN QUESTIONS
 
+> **All 8 resolved 2026-09-12** with the repo owner (owner route: "go ahead with
+> the recommendations"). The resolutions below drive the 7g-2 implementation;
+> 7g-1 already shipped on its own (see Status). Summary: the mapping lives
+> **App-side** in a `MuscleMap` (Core stays frozen); the full **11-group
+> hypertrophy** taxonomy; **flat 1.0** attribution; an **unclassified** bucket so
+> the total reconciles; a **Monday-start calendar week** window; per-group counts
+> **deferred out of the export**.
+
 1. **Where does the exercise→muscle-group mapping live?**
    - (a) A bundled data file (JSON/plist) shipped with the app, keyed by
-     exercise name, covering the built-in seed. Custom exercises get a
-     muscle-group picker in the exercise editor.
+    exercise name, covering the built-in seed. Custom exercises get a
+    muscle-group picker in the exercise editor.
    - (b) A new field on `Exercise` (`primaryMuscles: [MuscleGroup]`,
-     `secondaryMuscles: [MuscleGroup]`). Cleanest model, but changes the
-     `Codable` shape → SwiftData migration + the export format + every test
-     fixture that builds an `Exercise`.
+    `secondaryMuscles: [MuscleGroup]`). Cleanest model, but changes the
+    `Codable` shape → SwiftData migration + the export format + every test
+   fixture that builds an `Exercise`.
    - (c) A separate `MuscleMap` lookup type in the App layer, Core stays
-     untouched, the metric is computed App-side.
-   Recommend (a) or (c) to keep Core frozen; (b) is "correct" but expensive.
-2. **What is the `MuscleGroup` taxonomy?** Chest / back / shoulders / biceps /
-   triceps / quads / hamstrings / glutes / calves / core / forearms? Push/pull/
-   legs only? The granularity choice is a product decision and hard to change
-   later (it's in exported data). `CONTEXT.md` will need the new term(s) added
-   with an `_Avoid_` list.
+    untouched, the metric is computed App-side.
+  > **Resolved 2026-09-12: (c)** — a `MuscleMap` lookup type in `WorkoutLoggerApp`,
+   keyed by exercise **name** (case-insensitive, trimmed). `Exercise` is
+   alias-order-sensitive per `Model.swift`, so name-keying is the robust seam.
+   `MuscleGroup`, `MuscleGroupSetVolume`, and `MuscleMap.setVolume(across:in:)`
+   live in the App package; Core's `workoutSetVolumeByExercise(_:)` stays put and
+   the fold reuses it. Core stays frozen — no `Codable`-shape change, no
+   migration, no export-format change. (a) is the follow-up once a custom-exercise
+   muscle picker exists (then the mapping is user-authored and must persist).
+   (b) rejected: the migration + fixture churn isn't warranted for v1.1.
+2. **What is the `MuscleGroup` taxonomy?**
+  > **Resolved 2026-09-12: the full 11-group hypertrophy set** — enum cases
+   `chest, back, shoulders, biceps, triceps, quads, hamstrings, glutes, calves,
+   core, forearms`. The raw values *are* these spellings; they become the
+   exported keys once the export lands (Q8). `CaseIterable` for a stable display
+   order. `CONTEXT.md` gains a "Muscle group" term with an `_Avoid_` list.
 3. **Counting rules.**
-   - Warmups excluded (consistent with every other `ExerciseSession` field) —
-     confirm.
-   - Timed / distance working sets: do they count toward set volume? (They have
-     no reps but they are training stimulus.)
-   - Supersets/dropsets: one grouped round = N sets (one per exercise) or 1?
-   - Does a "working" set below some rep/effort threshold count? (Probably yes;
-     don't overthink.)
-4. **Fractional attribution?** Serious hypertrophy trackers count a compound lift
-   as e.g. 1.0 to the primary muscle and 0.5 to secondaries. Or is it a flat
-   1.0 per involved group? Flat is simpler and defensible for v1.1.
-5. **Unclassified exercises.** A custom exercise the user didn't tag: bucket it
-   as "unclassified" in the per-group view, or omit it? (Recommend: show an
-   "unclassified: N sets" row so the total reconciles.)
-6. **Time window.** Per workout, per calendar week, per rolling 7 days, "this
-   mesocycle"? Weekly is the convention. Is there a week-boundary setting
-   (Mon vs Sun)?
-7. **Does 7g-1 ship without 7g-2?** Set-volume-per-exercise is genuinely useful
-   alone and needs no new data. Recommend shipping 7g-1 first as its own small
-   PR, then 7g-2 once Q1/Q2 are resolved.
-8. **Export.** Should set volume / muscle-group volume appear in the
-   `WorkoutHistoryExport` output? (Probably yes for 7g-1's per-workout count;
-   7g-2 only if the mapping is stable.)
+  > **Resolved 2026-09-12:** warmups **excluded** (inherited — the fold reuses
+   `workoutSetVolumeByExercise`, which filters `role == .working`); timed /
+   distance working sets **count** (training stimulus even with no reps); a
+   superset / dropset round counts **one per working entry**, not one per round
+   (inherited from 7g-1); **no** rep/effort threshold — every working set counts.
+4. **Fractional attribution?**
+  > **Resolved 2026-09-12: flat 1.0 per involved group.** A compound lift's
+   working sets add `count` to each group its exercise maps to. No primary /
+   secondary weight — that has nothing to hang off (no `Exercise` field, per Q1).
+5. **Unclassified exercises.**
+  > **Resolved 2026-09-12: show an "unclassified: N sets" row** so the weekly
+   total reconciles. `MuscleGroupSetVolume` carries `unclassified: Int` — working
+   sets whose exercise the `MuscleMap` doesn't know — alongside `perGroup`, and
+   `total == Σ perGroup.values + unclassified` is a testable invariant.
+6. **Time window.**
+  > **Resolved 2026-09-12: per calendar week, Monday start.** A workout belongs
+   to the week its `startedAt` falls in. `calendarWeek(containing:in:)` returns
+   that `DateInterval` (`Calendar.startingOfWeek` with `firstWeekday = .monday`,
+   + 7 days); the view asks for "this week". A rolling-7-days window is a
+   one-line swap if the Monday drop-off proves annoying. No week-boundary setting
+   in v1.1.
+7. **Does 7g-1 ship without 7g-2?**
+  > **Resolved 2026-09-11: yes** — 7g-1 shipped first (Status). 7g-2 lands now
+   that Q1/Q2 are resolved.
+8. **Export.**
+  > **Resolved 2026-09-12: defer per-group counts out of `WorkoutHistoryExport`.**
+   7g-1 didn't touch the export, and 7g-2's mapping isn't yet user-stable (no
+   custom picker). Revisit when (a) the picker exists and the mapping is durable.
+   (7g-1's per-workout set count, if ever added, is separate and stable.)
 
 ---
 
