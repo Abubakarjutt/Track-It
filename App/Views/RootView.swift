@@ -46,6 +46,16 @@ struct RootView: View {
                             }
                             ToolbarItem(placement: .topBarTrailing) {
                                 NavigationLink {
+                                    MuscleGroupStimulusView(
+                                        store: store,
+                                        historyUnavailable: historyUnavailable
+                                    )
+                                } label: {
+                                    Image(systemName: "chart.bar.fill")
+                                }
+                            }
+                            ToolbarItem(placement: .topBarTrailing) {
+                                NavigationLink {
                                     SettingsView(model: settingsModel)
                                 } label: {
                                     Image(systemName: "gearshape")
