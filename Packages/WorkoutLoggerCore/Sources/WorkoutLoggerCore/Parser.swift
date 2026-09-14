@@ -67,9 +67,12 @@ private func backOffRoundIncrement(for unit: MassUnit) -> Double {
 // Back-off is the previous load at this fraction, rounded to the smallest plate.
 private let backOffFraction = 0.9
 
-// Verbatim-repeat phrasings, normalised to lowercase.
+// Verbatim-repeat phrasings, normalised to lowercase. A bare "one more" is a
+// repeat of the current set (7d Q6: "one more" = repeat the set), so it joins
+// the family rather than a rep-count adjustment.
 private let repeatPhrases: Set<String> = [
     "again", "repeat", "same", "same again", "same as last", "same as last time",
+    "one more",
 ]
 
 // MARK: - Patterns
