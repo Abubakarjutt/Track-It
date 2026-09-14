@@ -196,9 +196,25 @@ smoke coverage.
     sets DO count (Q3, "training stimulus"); a superset / dropset round counts one per working
     set entry, not one per round.
 - [x] `CONTEXT.md` — no new term for 7g-1: "Set volume" is already defined there; the
-  per-muscle-group term is 7g-2's concern and lands with it.
-- [ ] OPEN QUESTIONS for 7g-2: Q1 (mapping location), Q2 (muscle taxonomy), Q4 (fractional
-  attribution), Q5 (unclassified bucket), Q6 (week boundary). 7g-2 is gated on these; a
-  `writing-plans` pass is recommended before it.
-- [ ] 7g-2: `MuscleGroup` + mapping + `muscleGroupSetVolume` + weekly view (TDD) — **gated on Q1/Q2**.
-- [ ] update parent roadmap + memory (deferred with 7g-2).
+  per-muscle-group term ("Muscle group") now lands with 7g-2.
+- [x] OPEN QUESTIONS for 7g-2: Q1 (App-side `MuscleMap`, not Core), Q2 (the 11-group
+  taxonomy), Q4 (flat 1.0), Q5 (the `unclassified` bucket), Q6 (Monday-start week) —
+  **resolved 2026-09-12**; the recommended `writing-plans` pass followed
+  (`2026-09-12-v1.1-cluster-7g-stimulus-metrics.md`).
+- [x] 7g-2: `MuscleGroup` + mapping + per-muscle-group fold + weekly view (TDD) — **delivered 2026-09-14**.
+  - App-side by decision (Q1 = c): **no `WorkoutLoggerCore` change** — the fold reuses the
+    frozen `workoutSetVolume(_:)` / `workoutSetVolumeByExercise(_:)`; Core stays at 169.
+  - `MuscleGroup` (the 11-group taxonomy, Q2), `MuscleMap` (exercise-name → groups,
+    case/whitespace-insensitive) + `defaultMuscleMap` (the six starters), and
+    `MuscleGroupSetVolume` (`perGroup` + the `unclassified` bucket that keeps `total`
+    reconciling, Q5).
+  - `calendarWeek(containing:in:)` (Monday start, Q6); `MuscleGroupStimulusModel`
+    (`@MainActor @Observable`, the current-week fold over `isEnded` history);
+    `MuscleGroupStimulusView` + a `chart.bar.fill` toolbar slot in `RootView`.
+  - Counting rules inherited from Core (Q3/Q4): warmups excluded; timed / distance /
+    bodyweight working sets count; a superset / dropset round counts one per working
+    entry; attribution is flat 1.0 (Q4).
+  - Tests: App 245 → 261 (+11 `MuscleGroupStimulus`, +5 `MuscleGroupStimulusModel`);
+    Core unchanged at 169. Both green.
+- [x] update parent roadmap + memory — done 2026-09-14 (deferred-work-design "Cluster 7"
+  note + this spec's Status; the INDEX "Status snapshot" is dated, so left as-is).
