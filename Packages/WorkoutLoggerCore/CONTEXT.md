@@ -130,6 +130,14 @@ A count of working sets, optionally per muscle group, used to gauge training
 stimulus. Distinct from Volume; not surfaced in v1.
 _Avoid_: hard sets, weekly sets
 
+**Muscle group**:
+One of the eleven standard hypertrophy groups a per-exercise training stimulus is
+attributed to (chest, back, shoulders, biceps, triceps, quads, hamstrings,
+glutes, calves, core, forearms). Each group's count is the working sets the
+mapped exercise trains, tabulated flat — the per-group view of "Set volume".
+_Avoid_: muscle, body part (when the group is meant); volume / tonnage for the
+metric; "set volume" for the count it tabulates
+
 **One-rep max** _(1RM)_:
 The heaviest load a lifter can lift for a single rep of an exercise. Rarely
 tested directly in this app.
