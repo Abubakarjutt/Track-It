@@ -1,0 +1,9 @@
+{
+    "note": "added load keyword",
+    "hypotheses": ["plus twenty five for eight"],
+    "expected": [
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "added", "effort": "reps", "role": "working",
+                 "grouping": "straight", "load": 25, "loadUnit": "kilograms", "reps": 8 } }
+     ]
+}

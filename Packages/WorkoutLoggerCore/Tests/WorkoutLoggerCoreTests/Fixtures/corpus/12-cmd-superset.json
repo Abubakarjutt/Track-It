@@ -1,0 +1,5 @@
+{
+    "note": "command: superset marker",
+    "hypotheses": ["superset"],
+    "expected": [ { "kind": "command", "command": "startSuperset" } ]
+}

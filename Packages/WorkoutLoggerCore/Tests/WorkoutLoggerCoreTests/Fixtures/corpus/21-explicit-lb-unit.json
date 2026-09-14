@@ -1,0 +1,9 @@
+{
+    "note": "explicit spoken lb unit overrides the default kg context unit",
+     "hypotheses": ["two twenty five lb for five"],
+     "expected": [
+       { "kind": "set", "confidence": 1.0,
+         "set": { "loadType": "external", "effort": "reps", "role": "working",
+                  "grouping": "straight", "load": 225, "loadUnit": "pounds", "reps": 5 } }
+      ]
+}

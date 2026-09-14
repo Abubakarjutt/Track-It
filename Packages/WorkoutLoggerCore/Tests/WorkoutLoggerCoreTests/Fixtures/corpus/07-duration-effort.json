@@ -1,0 +1,11 @@
+{
+    "note": "duration effort",
+    "hypotheses": ["plank for sixty seconds"],
+     "expected": [
+      { "kind": "announcement", "confidence": 1.0,
+        "exercise": { "name": "Plank", "aliases": ["plank"] } },
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "bodyweight", "effort": "duration", "role": "working",
+                 "grouping": "straight", "durationSeconds": 60 } }
+     ]
+}

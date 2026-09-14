@@ -1,0 +1,9 @@
+{
+    "note": "dropset keyword, spaced 'drop set' form",
+     "hypotheses": ["drop set twenty for twelve"],
+     "expected": [
+       { "kind": "set", "confidence": 1.0,
+         "set": { "loadType": "external", "effort": "reps", "role": "working",
+                  "grouping": "dropset", "load": 20, "loadUnit": "kilograms", "reps": 12 } }
+      ]
+}

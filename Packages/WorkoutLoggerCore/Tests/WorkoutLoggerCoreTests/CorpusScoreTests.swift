@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import WorkoutLoggerCore
 
@@ -9,6 +10,11 @@ import WorkoutLoggerCore
 // how Apple's recogniser actually mangles gym speech (dropped "for", homophones,
 // spoken-number runs), never read back from the parser.
 //
+// 6.2: the corpus now lives on disk as one JSON file per row under
+// `Fixtures/corpus/` and is loaded via `loadCorpus`. A real corpus (dozens-to-
+// hundreds of rows, each tied to a recording) drops into the same directory
+// later with zero harness change.
+//
 // Tracked-metric mode per the spec: assert the ≥ 85% floor only, and surface the
 // rows that missed so a grammar regression is visible. Promotion to a hard gate
 // waits for the real recogniser feed.
@@ -17,18 +23,29 @@ import WorkoutLoggerCore
 struct CorpusScoreTests {
 
     @Test("the parse pipeline clears the launch-gate no-correction floor on the corpus")
-    func corpusClearsLaunchGateFloor() {
-        let result = score(launchGateCorpus, library: corpusLibrary)
+    func corpusClearsLaunchGateFloor() throws {
+        let corpus = try loadCorpus(from: corpusFixturesDirectory())
+        let result = score(corpus, library: corpusLibrary)
 
         #expect(
             result.rate >= 0.85,
             "no-correction rate \(result.rate) over \(result.total) rows; missed: \(result.failures)"
         )
-    }
+     }
+
+    /// `Fixtures/corpus/`, resolved relative to this source file. The fixtures are
+     /// a source-tree artifact, so real recogniser transcripts drop in here later
+     /// with no harness change.
+    private func corpusFixturesDirectory() -> URL {
+        URL(fileURLWithPath: #filePath)
+             .deletingLastPathComponent()
+             .appendingPathComponent("Fixtures/corpus")
+      }
 }
 
 // MARK: - Fixtures
 
+// The exercise library every corpus row resolves against.
 private let pullUp = Exercise(name: "Pull-Up", aliases: ["pull-ups", "pullups", "pull ups"])
 private let plank = Exercise(name: "Plank", aliases: ["plank"])
 private let carry = Exercise(name: "Farmer's Carry", aliases: ["farmer carry", "farmers carry"])
@@ -36,144 +53,3 @@ private let bench = Exercise(name: "Bench Press", aliases: ["bench", "bench pres
 private let rdl = Exercise(name: "Romanian Deadlift", aliases: ["rdl"])
 
 private let corpusLibrary = ExerciseLibrary([pullUp, plank, carry, bench, rdl])
-
-private func externalSet(
-    _ load: Double, _ reps: Int, role: SetRole = .working, grouping: Grouping = .straight
-) -> ParsedSet {
-    ParsedSet(
-        loadType: .external, effort: .reps, role: role, grouping: grouping,
-        load: load, loadUnit: .kilograms, reps: reps
-    )
-}
-
-// One row per axis combination the grammar covers, plus each command, plus two
-// rows that exercise the post-processor's recovery (best-hypothesis pick, name
-// biasing). Expected values follow the spec's axis semantics.
-private let launchGateCorpus: [CorpusEntry] = [
-    CorpusEntry(
-        hypotheses: ["two twenty five for five"],
-        expected: [.set(externalSet(225, 5), confidence: 1.0)],
-        note: "external / working / straight, spoken compound load"
-    ),
-    CorpusEntry(
-        hypotheses: ["warmup one thirty five for ten"],
-        expected: [.set(externalSet(135, 10, role: .warmup), confidence: 1.0)],
-        note: "warmup role keyword"
-    ),
-    CorpusEntry(
-        hypotheses: ["dropset forty for twelve"],
-        expected: [.set(externalSet(40, 12, grouping: .dropset), confidence: 1.0)],
-        note: "dropset grouping keyword"
-    ),
-    CorpusEntry(
-        hypotheses: ["plus twenty five for eight"],
-        expected: [.set(ParsedSet(
-            loadType: .added, effort: .reps, role: .working, grouping: .straight,
-            load: 25, loadUnit: .kilograms, reps: 8
-        ), confidence: 1.0)],
-        note: "added load keyword"
-    ),
-    CorpusEntry(
-        hypotheses: ["assisted eight minus forty"],
-        expected: [.set(ParsedSet(
-            loadType: .assisted, effort: .reps, role: .working, grouping: .straight,
-            load: 40, loadUnit: .kilograms, reps: 8
-        ), confidence: 1.0)],
-        note: "assisted load keyword"
-    ),
-    CorpusEntry(
-        hypotheses: ["pull ups twelve"],
-        expected: [.announcement(pullUp, confidence: 1.0), .set(ParsedSet(
-            loadType: .bodyweight, effort: .reps, role: .working, grouping: .straight,
-            reps: 12
-        ), confidence: 1.0)],
-        note: "bodyweight reps, inline name"
-    ),
-    CorpusEntry(
-        hypotheses: ["plank for sixty seconds"],
-        expected: [.announcement(plank, confidence: 1.0), .set(ParsedSet(
-            loadType: .bodyweight, effort: .duration, role: .working, grouping: .straight,
-            durationSeconds: 60
-        ), confidence: 1.0)],
-        note: "duration effort"
-    ),
-    CorpusEntry(
-        hypotheses: ["farmer carry forty meters"],
-        expected: [.announcement(carry, confidence: 1.0), .set(ParsedSet(
-            loadType: .bodyweight, effort: .distance, role: .working, grouping: .straight,
-            distanceMeters: 40
-        ), confidence: 1.0)],
-        note: "distance effort"
-    ),
-    CorpusEntry(
-        hypotheses: ["bench one eighty five for eight"],
-        expected: [.announcement(bench, confidence: 1.0), .set(externalSet(185, 8), confidence: 1.0)],
-        note: "inline name + set"
-    ),
-    CorpusEntry(
-        hypotheses: ["start workout"],
-        expected: [.command(.startWorkout)],
-        note: "command: start workout"
-    ),
-    CorpusEntry(
-        hypotheses: ["undo"],
-        expected: [.command(.undo)],
-        note: "command: undo"
-    ),
-    CorpusEntry(
-        hypotheses: ["superset"],
-        expected: [.command(.startSuperset)],
-        note: "command: superset marker"
-    ),
-    CorpusEntry(
-        hypotheses: [
-            "bench breast two twenty five for five",
-            "bench press two twenty five for five",
-        ],
-        expected: [.announcement(bench, confidence: 1.0), .set(externalSet(225, 5), confidence: 1.0)],
-        note: "post-processor picks the better-resolving hypothesis"
-    ),
-    CorpusEntry(
-        hypotheses: ["romanian deadlif three fifteen for three"],
-        expected: [.announcement(rdl, confidence: 1.0), .set(externalSet(315, 3), confidence: 1.0)],
-        note: "post-processor biases a misheard name span"
-    ),
-    CorpusEntry(
-        hypotheses: ["end workout"],
-        expected: [.command(.endWorkout)],
-        note: "command: end workout"
-      ),
-    CorpusEntry(
-        hypotheses: ["start rest"],
-        expected: [.command(.startRest)],
-        note: "command: start rest"
-      ),
-    CorpusEntry(
-        hypotheses: ["skip rest"],
-        expected: [.command(.skipRest)],
-        note: "command: skip rest"
-      ),
-    CorpusEntry(
-        hypotheses: ["help"],
-        expected: [.command(.help)],
-        note: "command: help"
-      ),
-    CorpusEntry(
-        hypotheses: ["end superset"],
-        expected: [.command(.endSuperset)],
-        note: "command: end superset marker"
-      ),
-    CorpusEntry(
-        hypotheses: ["drop set twenty for twelve"],
-        expected: [.set(externalSet(20, 12, grouping: .dropset), confidence: 1.0)],
-        note: "dropset keyword, spaced 'drop set' form"
-      ),
-    CorpusEntry(
-        hypotheses: ["two twenty five lb for five"],
-        expected: [.set(ParsedSet(
-            loadType: .external, effort: .reps, role: .working, grouping: .straight,
-            load: 225, loadUnit: .pounds, reps: 5
-           ), confidence: 1.0)],
-        note: "explicit spoken lb unit overrides the default kg context unit"
-       ),
-]

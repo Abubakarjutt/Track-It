@@ -1,0 +1,9 @@
+{
+    "note": "warmup role keyword",
+    "hypotheses": ["warmup one thirty five for ten"],
+    "expected": [
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "external", "effort": "reps", "role": "warmup",
+                 "grouping": "straight", "load": 135, "loadUnit": "kilograms", "reps": 10 } }
+     ]
+}
