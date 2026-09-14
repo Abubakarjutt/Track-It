@@ -34,8 +34,10 @@ struct RelativeParserTests {
 
     // MARK: - Repeat the previous set
 
-    @Test("an exact 'again' reproduces the previous set", arguments: [
+    @Test("an exact repeat phrase (incl. a bare 'one more') reproduces the previous set",
+          arguments: [
         "again", "repeat", "same", "same again", "same as last time", "same as last",
+        "one more",
     ])
     func repeatPreviousSet(phrase: String) {
         let previous = workingLoad(100, reps: 5)
@@ -43,13 +45,13 @@ struct RelativeParserTests {
         #expect(results == [.set(previous, confidence: 1.0)])
     }
 
-    @Test("'again' repeats a loadless set too (a timed effort)")
-    func repeatsLoadlessSet() {
+    @Test("a verbatim repeat phrase repeats a loadless set too", arguments: ["again", "one more"])
+    func repeatsLoadlessSet(phrase: String) {
         let previous = ParsedSet(
             loadType: .bodyweight, effort: .duration, role: .working, grouping: .straight,
             durationSeconds: 60
         )
-        let results = parse("again", context: context(previous), library: library)
+        let results = parse(phrase, context: context(previous), library: library)
         #expect(results == [.set(previous, confidence: 1.0)])
     }
 
@@ -143,7 +145,7 @@ struct RelativeParserTests {
     // MARK: - Fail closed when there is no previous set
 
     @Test("a relative phrasing with no previous set logs nothing", arguments: [
-        "again", "up 10", "down 10", "back-off", "add a plate", "drop a plate",
+        "again", "one more", "up 10", "down 10", "back-off", "add a plate", "drop a plate",
     ])
     func failsClosedWithoutPreviousSet(phrase: String) {
         let results = parse(phrase, context: context(nil), library: library)
