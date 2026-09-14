@@ -138,4 +138,42 @@ private let launchGateCorpus: [CorpusEntry] = [
         expected: [.announcement(rdl, confidence: 1.0), .set(externalSet(315, 3), confidence: 1.0)],
         note: "post-processor biases a misheard name span"
     ),
+    CorpusEntry(
+        hypotheses: ["end workout"],
+        expected: [.command(.endWorkout)],
+        note: "command: end workout"
+      ),
+    CorpusEntry(
+        hypotheses: ["start rest"],
+        expected: [.command(.startRest)],
+        note: "command: start rest"
+      ),
+    CorpusEntry(
+        hypotheses: ["skip rest"],
+        expected: [.command(.skipRest)],
+        note: "command: skip rest"
+      ),
+    CorpusEntry(
+        hypotheses: ["help"],
+        expected: [.command(.help)],
+        note: "command: help"
+      ),
+    CorpusEntry(
+        hypotheses: ["end superset"],
+        expected: [.command(.endSuperset)],
+        note: "command: end superset marker"
+      ),
+    CorpusEntry(
+        hypotheses: ["drop set twenty for twelve"],
+        expected: [.set(externalSet(20, 12, grouping: .dropset), confidence: 1.0)],
+        note: "dropset keyword, spaced 'drop set' form"
+      ),
+    CorpusEntry(
+        hypotheses: ["two twenty five lb for five"],
+        expected: [.set(ParsedSet(
+            loadType: .external, effort: .reps, role: .working, grouping: .straight,
+            load: 225, loadUnit: .pounds, reps: 5
+           ), confidence: 1.0)],
+        note: "explicit spoken lb unit overrides the default kg context unit"
+       ),
 ]
