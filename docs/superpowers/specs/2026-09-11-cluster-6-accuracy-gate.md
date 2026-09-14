@@ -75,6 +75,15 @@ a targeted assertion fail), fix the parser/post-processor **only if the spec say
 that phrasing is in scope for v1** — otherwise the row belongs in cluster 7d
 (grammar long-tail), not here. Keep `rate` at 1.0 for the rows that are in scope.
 
+> **Progress 2026-09-14:** widened `launchGateCorpus` 14 → 21 rows — the five
+> remaining command forms the parser already handles (end workout, start rest, skip
+> rest, help, end superset) plus two axis-coverage rows: a spaced "drop set" form
+> (the regex accepts "drop set" as well as "dropset") and an explicit `lb` spoken
+> unit that overrides the default kilograms context. Every added row is in-scope for
+> v1, so the no-correction rate holds at 1.0 (the assertion stays the `>= 0.85` floor
+> — tracked-metric mode). Homophone / multi-hypothesis breadth beyond the two existing
+> recovery rows is still open, and the disk-fixture restructure (6.2) is not yet done.
+
 ### 6.2 Restructure the harness to load fixtures from disk
 
 Today `launchGateCorpus` is a Swift literal. A real corpus is dozens-to-hundreds
