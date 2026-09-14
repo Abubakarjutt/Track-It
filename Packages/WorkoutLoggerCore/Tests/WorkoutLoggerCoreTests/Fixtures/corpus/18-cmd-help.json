@@ -1,0 +1,5 @@
+{
+    "note": "command: help",
+    "hypotheses": ["help"],
+    "expected": [ { "kind": "command", "command": "help" } ]
+}

@@ -1,0 +1,5 @@
+{
+    "note": "command: undo",
+    "hypotheses": ["undo"],
+    "expected": [ { "kind": "command", "command": "undo" } ]
+}

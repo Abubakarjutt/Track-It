@@ -1,0 +1,9 @@
+{
+    "note": "assisted load keyword",
+    "hypotheses": ["assisted eight minus forty"],
+    "expected": [
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "assisted", "effort": "reps", "role": "working",
+                 "grouping": "straight", "load": 40, "loadUnit": "kilograms", "reps": 8 } }
+     ]
+}

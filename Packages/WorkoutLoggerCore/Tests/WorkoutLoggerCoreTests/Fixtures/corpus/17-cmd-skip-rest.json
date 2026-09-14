@@ -1,0 +1,5 @@
+{
+    "note": "command: skip rest",
+    "hypotheses": ["skip rest"],
+    "expected": [ { "kind": "command", "command": "skipRest" } ]
+}

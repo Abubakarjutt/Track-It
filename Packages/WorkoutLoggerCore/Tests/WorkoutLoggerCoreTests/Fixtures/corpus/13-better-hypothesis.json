@@ -1,0 +1,14 @@
+{
+    "note": "post-processor picks the better-resolving hypothesis",
+    "hypotheses": [
+        "bench breast two twenty five for five",
+        "bench press two twenty five for five"
+      ],
+     "expected": [
+       { "kind": "announcement", "confidence": 1.0,
+         "exercise": { "name": "Bench Press", "aliases": ["bench", "bench press"] } },
+       { "kind": "set", "confidence": 1.0,
+         "set": { "loadType": "external", "effort": "reps", "role": "working",
+                  "grouping": "straight", "load": 225, "loadUnit": "kilograms", "reps": 5 } }
+      ]
+}

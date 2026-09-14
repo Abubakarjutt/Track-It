@@ -1,0 +1,11 @@
+{
+    "note": "distance effort",
+     "hypotheses": ["farmer carry forty meters"],
+     "expected": [
+      { "kind": "announcement", "confidence": 1.0,
+        "exercise": { "name": "Farmer's Carry", "aliases": ["farmer carry", "farmers carry"] } },
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "bodyweight", "effort": "distance", "role": "working",
+                 "grouping": "straight", "distanceMeters": 40 } }
+     ]
+}

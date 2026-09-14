@@ -1,0 +1,9 @@
+{
+    "note": "external / working / straight, spoken compound load",
+    "hypotheses": ["two twenty five for five"],
+    "expected": [
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "external", "effort": "reps", "role": "working",
+                 "grouping": "straight", "load": 225, "loadUnit": "kilograms", "reps": 5 } }
+     ]
+}

@@ -1,0 +1,5 @@
+{
+    "note": "command: start workout",
+    "hypotheses": ["start workout"],
+    "expected": [ { "kind": "command", "command": "startWorkout" } ]
+}

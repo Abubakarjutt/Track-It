@@ -1,0 +1,11 @@
+{
+    "note": "post-processor biases a misheard name span",
+    "hypotheses": ["romanian deadlif three fifteen for three"],
+     "expected": [
+       { "kind": "announcement", "confidence": 1.0,
+         "exercise": { "name": "Romanian Deadlift", "aliases": ["rdl"] } },
+       { "kind": "set", "confidence": 1.0,
+         "set": { "loadType": "external", "effort": "reps", "role": "working",
+                  "grouping": "straight", "load": 315, "loadUnit": "kilograms", "reps": 3 } }
+      ]
+}

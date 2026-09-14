@@ -1,0 +1,11 @@
+{
+    "note": "bodyweight reps, inline name",
+    "hypotheses": ["pull ups twelve"],
+    "expected": [
+      { "kind": "announcement", "confidence": 1.0,
+        "exercise": { "name": "Pull-Up", "aliases": ["pull-ups", "pullups", "pull ups"] } },
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "bodyweight", "effort": "reps", "role": "working",
+                 "grouping": "straight", "reps": 12 } }
+     ]
+}

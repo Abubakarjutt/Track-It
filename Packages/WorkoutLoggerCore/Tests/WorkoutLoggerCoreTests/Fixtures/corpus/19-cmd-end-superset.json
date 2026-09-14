@@ -1,0 +1,5 @@
+{
+    "note": "command: end superset marker",
+    "hypotheses": ["end superset"],
+    "expected": [ { "kind": "command", "command": "endSuperset" } ]
+}

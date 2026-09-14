@@ -1,0 +1,11 @@
+{
+    "note": "inline name + set",
+     "hypotheses": ["bench one eighty five for eight"],
+     "expected": [
+      { "kind": "announcement", "confidence": 1.0,
+        "exercise": { "name": "Bench Press", "aliases": ["bench", "bench press"] } },
+      { "kind": "set", "confidence": 1.0,
+        "set": { "loadType": "external", "effort": "reps", "role": "working",
+                 "grouping": "straight", "load": 185, "loadUnit": "kilograms", "reps": 8 } }
+     ]
+}
