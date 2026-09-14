@@ -185,10 +185,12 @@ recording logistics, not code. Promotion is small once numbers are stable.
 
 ## Status
 
-- [ ] 6.1 widen hand-authored corpus (in-scope rows only, `rate` stays 1.0)
-- [ ] 6.2 disk-fixture format + `loadCorpus` in test target + move existing rows
-- [ ] 6.3 recording-protocol checklist
-- [ ] [DATA] record clips, capture n-best, write fixtures
-- [ ] investigate misses; tune post-processor / parser for in-scope failures
-- [ ] promote to release-blocking CI gate + held-out slice + dated rate note
-- [ ] update parent roadmap Cluster 6 status + memory
+- [x] 6.1 widen hand-authored corpus 14 to 21 rows (in-scope rows only, `rate` stays 1.0) -- `test(corpus)` commit
+- [x] 6.2 disk-fixture format + `loadCorpus` in test target + move existing rows -- `refactor(corpus)` commit
+- [x] 6.3 recording-protocol checklist -- `checklists/2026-09-14-accuracy-corpus-recording.md`
+- [ ] [DATA] record clips, capture n-best, write fixtures -- **blocked**: cluster 5a's
+     on-device recogniser front-end + the sec-0 decisions (Q1 capture hook, Q3 size
+     target, Q4 audio storage, Q5 consent, Q6 shared harness).
+- [ ] investigate misses; tune post-processor / parser for in-scope failures -- **blocked** on [DATA].
+- [ ] promote to release-blocking CI gate + held-out slice + dated rate note -- **blocked** on a stable [DATA] rate.
+- [x] update parent roadmap Cluster 6 status + memory (INDEX snapshot + this Status).
