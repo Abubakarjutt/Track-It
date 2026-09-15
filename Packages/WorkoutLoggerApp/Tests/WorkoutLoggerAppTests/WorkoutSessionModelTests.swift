@@ -147,6 +147,27 @@ struct WorkoutSessionModelTests {
         #expect(rig.voice.performed.contains(.earcon))
     }
 
+    @Test(
+        "toggleListening's stop resets isListening even when the source throws — identical feedback to released() (cluster 7b acceptance test 3)",
+        .timeLimit(.minutes(1))
+    )
+    func toggleThrowingSourceResetsListening() async throws {
+        let rig = try makeRig(script: [])
+        rig.source.throwWhenExhausted = true
+        rig.model.toggleListening() // start
+        #expect(rig.model.isListening == true)
+
+        rig.model.toggleListening() // stop — the throwing release
+
+        while rig.model.isListening { await Task.yield() }
+        #expect(rig.model.isListening == false)
+        #expect(rig.model.workout == nil)
+        // Same feedback pressed()/released() gets on a throw — the caller
+        // must not change what the lifter perceives.
+        #expect(rig.haptics.played.contains(.notCaught))
+        #expect(rig.voice.performed.contains(.earcon))
+    }
+
     @Test("toggleListening starts an utterance when idle, exactly like pressed()")
     func toggleStartsWhenIdle() throws {
         let rig = try makeRig(script: [["start workout"]])
