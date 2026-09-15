@@ -14,9 +14,16 @@ targets:
     type: application
     platform: iOS
     sources:
+      # Widgets/** is excluded here and picked up by TrackitWidgets below
+      # instead — its Swift files (a second @main WidgetBundle, the widget
+      # views) must not also compile into the app target. Widgets/Shared is
+      # the one part both targets need (the ActivityAttributes contract),
+      # so it's re-added as its own explicit source path.
       - path: App
         excludes:
           - "Tests/**"
+          - "Widgets/**"
+      - path: App/Widgets/Shared
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
@@ -29,6 +36,20 @@ targets:
         product: WorkoutLoggerCore
       - package: WorkoutLoggerApp
         product: WorkoutLoggerApp
+      - target: TrackitWidgets
+        embed: true
+  TrackitWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: App/Widgets
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "6.0"
+        INFOPLIST_FILE: App/Widgets/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.abubakarsahi.trackit.widgets
+        SKIP_INSTALL: "NO"
   TrackitTests:
     type: bundle.ui-testing
     platform: iOS
