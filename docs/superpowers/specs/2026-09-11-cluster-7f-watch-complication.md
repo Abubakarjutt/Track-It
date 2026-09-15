@@ -179,8 +179,8 @@ after 7a if CloudKit is happening (it changes the transport decision).
 ## Status
 
 - [x] OPEN QUESTIONS resolved (esp. 1 primary fact, 3 scope, 4 transport). Done 2026-09-15.
-- [ ] `writing-plans` → plan file
-- [ ] watchOS app + widget-extension targets in `project.yml`
-- [ ] `WatchSummary` + phone publisher + watch timeline provider
-- [ ] paired-watch device verification
-- [ ] update parent roadmap + memory
+- [x] `writing-plans` → plan file. `docs/superpowers/plans/2026-09-15-cluster-7f-watch-complication.md`.
+- [x] watchOS app + widget-extension targets in `project.yml`. `TrackitWatch` + `TrackitWatchWidgets`, verified via a real `xcodebuild` (watchOS platform installed 2026-09-15) — `** BUILD SUCCEEDED **` for both the `Trackit` scheme (embeds `TrackitWatch.app`) and the `TrackitWatch` scheme.
+- [x] `WatchSummary` + phone publisher + watch timeline provider. `SystemWatchSummaryTransport` (phone) → `WCSession.updateApplicationContext` → `WatchConnectivitySessionReceiver` (watch) → App Group `UserDefaults` → `DaysSinceLastWorkoutProvider` (`TimelineProvider`, refreshes on push + at local midnight).
+- [ ] paired-watch device verification. Out of scope for this pass (no physical device available), same as every prior cluster's device step.
+- [x] update parent roadmap + memory. `docs/superpowers/specs/2026-09-11-v1.1-remaining-INDEX.md` + `MEMORY.md`.
