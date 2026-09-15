@@ -8,7 +8,7 @@ import WorkoutLoggerCore
 /// The raw value is the group's spelling and becomes the exported key once the
 /// per-group export lands (Q8 — deferred for v1.1). `CaseIterable` gives the view
 /// a stable display order; `String` raw gives `Codable`/`Hashable` for free.
-public enum MuscleGroup: String, CaseIterable, Codable, Sendable {
+public enum MuscleGroup: String, CaseIterable, Codable, Sendable, Hashable, Equatable {
     case chest
     case back
     case shoulders
