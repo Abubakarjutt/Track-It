@@ -71,7 +71,7 @@ struct RootView: View {
                 }
             }
         }
-        .preferredColorScheme(colorScheme)
+        .preferredColorScheme(nonHUDColorScheme)
         .onReceive(tick) { _ in model.tick() }
         .onChange(of: model.keepScreenAwake, initial: true) { _, _ in syncIdleTimer() }
         .onChange(of: scenePhase) { _, _ in syncIdleTimer() }
@@ -80,8 +80,10 @@ struct RootView: View {
 
     /// The non-HUD colour scheme, derived from the setting: `nil` follows the
     /// system. The HUD branch overrides this locally with its own unconditional
-    /// `.preferredColorScheme(.dark)` — see `body`.
-    private var colorScheme: ColorScheme? {
+    /// `.preferredColorScheme(.dark)` — see `body`. Named `nonHUD...` rather
+    /// than the shorter `colorScheme` to avoid colliding with SwiftUI's own
+    /// `ColorScheme` type and `@Environment(\.colorScheme)` vocabulary.
+    private var nonHUDColorScheme: ColorScheme? {
         switch settingsModel.appearance {
         case .system: return nil
         case .light: return .light
