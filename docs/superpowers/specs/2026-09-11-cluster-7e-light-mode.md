@@ -238,11 +238,20 @@ gate — nothing here is arms-length/gym-lighting-critical like the HUD).
       and found to need no new abstraction (Q3), light/dark only, no
       high-contrast (Q4), one-meaning rule confirmed already respected (Q5).
       Done 2026-09-15.
-- [ ] `appearance` setting slice (`SettingsStore` + `SettingsModel`) — TDD
-- [ ] `SettingsView` picker
-- [ ] `RootView.swift`: scope `.preferredColorScheme(.dark)` +
+- [x] `appearance` setting slice (`SettingsStore` + `SettingsModel`) — TDD.
+      Done 2026-09-15 (`850c7de`, `1a386cd`): `Appearance` enum, protocol +
+      `InMemorySettingsStore` conformance, mirrored `SettingsModel.appearance`.
+- [x] `SettingsView` picker. Done 2026-09-15 (`d697704`): segmented
+      System/Light/Dark picker with a footer noting the HUD stays dark.
+- [x] `RootView.swift`: scope `.preferredColorScheme(.dark)` +
       `Color.black.ignoresSafeArea()` to the HUD branch only; apply
-      `settingsModel.appearance` elsewhere
-- [ ] `LaunchGateView.swift:12` / `OnboardingView.swift:19`: `.white` → `.primary`
-- [ ] light-mode eyeball check (simulator/device), not a hard gate
+      `settingsModel.appearance` elsewhere. Done 2026-09-15 (`d697704`) —
+      attached to `HUDView`'s own content inside the `NavigationStack`
+      (not the stack itself), per Q2's inheritance note, so pushed
+      destinations pick up `settingsModel.appearance` instead.
+- [x] `LaunchGateView.swift:12` / `OnboardingView.swift:19`: `.white` →
+      `.primary`. Done 2026-09-15 (`d697704`).
+- [ ] light-mode eyeball check (simulator/device), not a hard gate —
+      left for the device-verification pass (cluster 5); nothing here is
+      gym-lighting-critical like the HUD.
 - [ ] update parent roadmap + memory
