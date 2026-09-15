@@ -20,6 +20,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             unitsSection
+            appearanceSection
             speechSection
             exercisesSection
             exportSection
@@ -74,6 +75,22 @@ struct SettingsView: View {
                 Text("Pounds").tag(MassUnit.pounds)
             }
             .pickerStyle(.segmented)
+        }
+    }
+
+    @ViewBuilder private var appearanceSection: some View {
+        Section {
+            Picker("Appearance", selection: Binding(
+                get: { model.appearance },
+                set: { model.appearance = $0 }
+            )) {
+                Text("System").tag(Appearance.system)
+                Text("Light").tag(Appearance.light)
+                Text("Dark").tag(Appearance.dark)
+            }
+            .pickerStyle(.segmented)
+        } footer: {
+            Text("The logging screen always stays dark for readability mid-workout.")
         }
     }
 

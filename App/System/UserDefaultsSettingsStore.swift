@@ -12,6 +12,7 @@ final class UserDefaultsSettingsStore: SettingsStore {
         static let syncsToHealth = "syncsToAppleHealth"
         static let analytics = "analyticsEnabled"
         static let recognitionReview = "recognitionReviewEnabled"
+        static let appearance = "appearance"
       }
     private let defaults = UserDefaults.standard
 
@@ -39,4 +40,26 @@ final class UserDefaultsSettingsStore: SettingsStore {
         get { defaults.bool(forKey: Key.recognitionReview) }
         set { defaults.set(newValue, forKey: Key.recognitionReview) }
        }
+
+    /// Stored as a short string; the absent key (first launch, or a value
+    /// written by a future case this build doesn't know) reads as `.dark` —
+    /// preserving the app's pre-light-mode look until a user opts in.
+    var appearance: Appearance {
+        get {
+            switch defaults.string(forKey: Key.appearance) {
+            case "system": return .system
+            case "light": return .light
+            default: return .dark
+            }
+        }
+        set {
+            let raw: String
+            switch newValue {
+            case .system: raw = "system"
+            case .light: raw = "light"
+            case .dark: raw = "dark"
+            }
+            defaults.set(raw, forKey: Key.appearance)
+        }
+    }
 }

@@ -21,9 +21,7 @@ struct RootView: View {
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
+        Group {
             if onboardingModel.shouldShowOnboarding {
                 OnboardingView(model: onboardingModel)
             } else if model.pendingStaleWorkout != nil {
@@ -31,6 +29,14 @@ struct RootView: View {
             } else {
                 NavigationStack {
                     HUDView(model: model, historyUnavailable: historyUnavailable)
+                        // Scoped to the HUD's own content, not the NavigationStack
+                        // itself — a pushed destination (History, Progress,
+                        // Settings, and everything under them) is a separate view
+                        // inserted onto the stack, not a descendant of this one, so
+                        // it isn't forced dark by this and instead picks up
+                        // `colorScheme` below like the rest of the app.
+                        .background(Color.black.ignoresSafeArea())
+                        .preferredColorScheme(.dark)
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
                                 NavigationLink {
@@ -65,11 +71,22 @@ struct RootView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(colorScheme)
         .onReceive(tick) { _ in model.tick() }
         .onChange(of: model.keepScreenAwake, initial: true) { _, _ in syncIdleTimer() }
         .onChange(of: scenePhase) { _, _ in syncIdleTimer() }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+    }
+
+    /// The non-HUD colour scheme, derived from the setting: `nil` follows the
+    /// system. The HUD branch overrides this locally with its own unconditional
+    /// `.preferredColorScheme(.dark)` — see `body`.
+    private var colorScheme: ColorScheme? {
+        switch settingsModel.appearance {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
     }
 
     /// Keep the screen awake only while a workout is open *and* the app is

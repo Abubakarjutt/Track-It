@@ -9,7 +9,7 @@ struct LaunchGateView: View {
         VStack(spacing: 32) {
             Text("Unfinished workout")
                 .font(.title.bold())
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
 
             if let workout = model.pendingStaleWorkout {
                 Text("Started \(workout.startedAt.formatted(date: .abbreviated, time: .shortened)) and never ended.")
