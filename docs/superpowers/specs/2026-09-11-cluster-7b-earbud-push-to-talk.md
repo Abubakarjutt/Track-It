@@ -92,6 +92,17 @@ Device-only (needs real headsets):
 
 ## OPEN QUESTIONS (resolve before implementation)
 
+> **All 6 resolved 2026-09-15** (owner route: Q1/Q2/Q4/Q5 via `AskUserQuestion`,
+> accepted every recommendation; Q3/Q6 are implementation-technical calls,
+> resolved directly and noted below). Summary: a single-command **toggle**
+> (`togglePlayPauseCommand` → `WorkoutSessionModel.toggleListening()`), reached
+> by publishing minimal Now Playing info only while a workout is active,
+> **foreground-only** (background folded into cluster 7c), **no automatic
+> timeout** (matches the screen button's own unbounded hold), audio session
+> category **unchanged for now** (`.record`/`.measurement`/`.duckOthers`,
+> confirmed or escalated to `.playAndRecord` at device-test time), and
+> discoverability as a one-line `SettingsView` footer note, no onboarding step.
+
 1. **Which remote signal?** `MPRemoteCommandCenter` exposes `playCommand`,
    `pauseCommand`, `togglePlayPauseCommand`, `stopCommand`, plus skip/seek. A
    headset centre button maps to play/pause/toggle. There is **no "press and
@@ -101,6 +112,16 @@ Device-only (needs real headsets):
    acceptable, or decide a double-press / long-press mapping (`MPRemoteCommandCenter`
    long-press is not standard — would need `AVAudioSession` route-change or
    accessory hacks; probably out of scope).
+      > **Resolved 2026-09-15: single toggle command.** Register a handler on
+      > `MPRemoteCommandCenter.shared().togglePlayPauseCommand` only (not
+      > separate `playCommand`/`pauseCommand` — most single-button remotes
+      > only ever send toggle/play-pause anyway, so a second pair of handlers
+      > would rarely see independent signal). Each successful handler call
+      > flips the model's listening state — see the new
+      > `WorkoutSessionModel.toggleListening()` seam below (Q1's consequence
+      > for the "package slice" line in Effort/Status: this cluster **does**
+      > need one, since `pressed()`/`released()` alone can't express "toggle,
+      > ignoring a call that arrives mid-processing").
 2. **Does trackit become the Now Playing app?** To reliably receive remote
    commands you generally must set `MPNowPlayingInfoCenter.default().nowPlayingInfo`
    and have an active playback audio session. trackit plays no media. Options:
@@ -108,33 +129,91 @@ Device-only (needs real headsets):
    while a workout is active; (b) rely on being the foreground audio-recording
    app; (c) accept that it only works when nothing else is playing. This
    interacts heavily with 7c (background audio).
+      > **Resolved 2026-09-15: (a) publish minimal Now Playing info.** Set
+      > `MPNowPlayingInfoCenter.default().nowPlayingInfo` to a static
+      > `[MPMediaItemPropertyTitle: "Trackit — workout in progress"]`
+      > (no artwork, no duration/elapsed-time keys — there is no playback
+      > position to report) for the duration of an active workout, cleared
+      > when the workout ends. Owned by the same `App/System/` handler type
+      > as the command registration (Q1), not by `WorkoutSessionModel` —
+      > this is presentation-layer plumbing for reliable command delivery,
+      > not domain state.
 3. **Audio session category.** The recorder currently uses whatever category
    `SystemSpeechRecognizer` sets (likely `.record` or `.playAndRecord`). Receiving
    remote commands and ducking other audio may require `.playAndRecord` with
    `.mixWithOthers` / `.duckOthers`. Define the exact category/mode/options and
    whether it changes the existing recogniser behaviour.
+      > **Resolved 2026-09-15: leave `SystemSpeechRecognizer`'s existing
+      > `.record` / `.measurement` / `.duckOthers` unchanged for the first
+      > pass.** This is a technical call, not a product one, so resolved
+      > directly rather than put to the owner. Rationale: `.record` is
+      > mic-only and lowest-risk for the shipped voice-logging path that
+      > every utterance (not just earbud-triggered ones) goes through —
+      > widening it to `.playAndRecord` before we know it's needed would
+      > change behaviour for 100% of utterances to help a feature that's
+      > new and device-untested. Apple's remote-command delivery does not
+      > strictly require a playback-capable category — an active session
+      > plus a registered `MPNowPlayingInfoCenter` entry is generally
+      > enough. **Verify at this cluster's own device-testing step** (not
+      > 5a's, since 5a predates this feature): if `togglePlayPauseCommand`
+      > doesn't fire reliably under `.record`, escalate to `.playAndRecord`
+      > with `.duckOthers` (still no `.mixWithOthers` — trackit has no
+      > reason to let other audio keep playing under it) and re-test. Record
+      > the outcome in this file's Status section either way.
 4. **Scope: foreground only, or background too?** If background, this cluster
    depends on 7c. Recommend shipping **foreground-only first** and folding the
    background case into 7c.
+      > **Resolved 2026-09-15: foreground-only.** The handler does nothing
+      > special to stay alive backgrounded; when 7c adds background-audio
+      > entitlements and a background session, the same command targets and
+      > `toggleListening()` seam keep working without change — 7c's job is
+      > only to keep the audio engine (and therefore the app) alive to
+      > receive the command while backgrounded, not to touch this cluster's
+      > code.
 5. **Toggle timeout.** With hold-to-talk, releasing ends the utterance. With
    toggle, what ends it if the lifter never taps again — a silence timeout in
    `SystemSpeechRecognizer`? A max duration? This may already exist for the
    screen button; confirm and reuse.
+      > **Resolved 2026-09-15: no automatic timeout.** Confirmed by reading
+      > `SystemSpeechRecognizer.swift`: the screen button has none either —
+      > `endUtterance()` only ever resolves on an explicit caller (`released()`),
+      > never on a timer. Toggle inherits the same "the lifter fully
+      > controls start and stop" model; adding a safety max-duration would be
+      > new behaviour neither caller has today, its own design/test surface,
+      > and out of scope for this pass. If real usage shows lifters leaving
+      > the mic open, that's a follow-up item, not a blocker here.
 6. **Discoverability.** Is there any UI telling the user the earbud button works?
    A one-time tip? A Settings line? Master spec is silent.
+      > **Resolved 2026-09-15: one Settings footer line, no onboarding step.**
+      > A technical/low-stakes call, resolved directly. Add a sentence to
+      > `SettingsView`'s existing Speech section footer (or a new one-line
+      > footer directly under the Speech section) — something like "Your
+      > headset's centre button also starts and stops listening." No new
+      > onboarding screen, no first-run tip — those are bigger surface for a
+      > minor affordance most lifters will either notice by accident or
+      > never need.
 
 ---
 
 ## Effort
 
-Small once OPEN QUESTIONS 1–3 are settled — one `App/System/` type, possibly one
-package slice, plus device testing. No `writing-plans` pass needed unless the
-Now-Playing/audio-session work (Q2/Q3) turns out to entangle the recogniser. Do
-**after** 5a is verified so the audio path is known-good on device.
+**Resolved 2026-09-15 — still small, one small package slice confirmed
+needed.** Real work: (1) `WorkoutSessionModel.toggleListening()` — a small
+TDD slice per Q1's resolution (discrete toggle semantics: idle → start,
+listening → stop, ignored while `isProcessing`); (2) one new
+`App/System/RemoteCommandPushToTalk` type — registers
+`togglePlayPauseCommand`, publishes/clears Now Playing info per Q2, calls
+`toggleListening()`; (3) `App/TrackitApp.swift` wiring, next to the other
+`System*` composition. No `writing-plans` pass needed — small enough for
+direct TDD slices, same shape as 7e. Do the package slice and wiring now;
+the device-testing step (Q3's category check + wired/Bluetooth verification)
+is its own gate, same style as the 5a/cluster-5 device pass.
 
 ## Status
 
-- [ ] OPEN QUESTIONS resolved and written back
-- [ ] package slice (if a toggle affordance is needed) — TDD
+- [x] OPEN QUESTIONS resolved and written back. Done 2026-09-15.
+- [ ] package slice (`WorkoutSessionModel.toggleListening()`) — TDD
 - [ ] `App/System/RemoteCommandPushToTalk` + `TrackitApp.swift` wiring
-- [ ] device verification with wired + Bluetooth headsets
+- [ ] device verification with wired + Bluetooth headsets (incl. confirming
+      Q3's audio-session category choice; escalate to `.playAndRecord` if
+      `.record` doesn't reliably receive the toggle command)
