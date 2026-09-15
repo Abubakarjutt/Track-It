@@ -36,6 +36,13 @@ final class RemoteCommandPushToTalk {
         self.nowPlayingInfoCenter = nowPlayingInfoCenter
 
         commandCenter.togglePlayPauseCommand.isEnabled = true
+        // `[weak self]` is load-bearing, not defensive: `commandCenter` is a
+        // process-wide singleton, so a strong-self target would retain this
+        // instance forever. Swift infers this closure @MainActor because it's
+        // formed inside a @MainActor init, but MediaPlayer — not the
+        // compiler — is what actually guarantees the callback lands on the
+        // main thread; that's a documented framework contract, not something
+        // isolation-checking proved here.
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
             self.session.toggleListening()
