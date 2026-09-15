@@ -21,6 +21,10 @@ struct TrackitApp: App {
     // withObservationTracking loop stay alive for the app's lifetime
     // (cluster 7b) — never read after init.
     private let remotePushToTalk: RemoteCommandPushToTalk
+    // Retained only so its withObservationTracking loop and the Live
+    // Activity it owns stay alive for the app's lifetime (cluster 7c) —
+    // never read after init.
+    private let liveActivity: LiveActivityController
 
     init() {
         let storeURL = URL.applicationSupportDirectory.appending(path: "Trackit.store")
@@ -112,6 +116,7 @@ struct TrackitApp: App {
            )
       _model = State(initialValue: session)
         self.remotePushToTalk = RemoteCommandPushToTalk(session: session)
+        self.liveActivity = LiveActivityController(session: session)
 
         self.settingsModel = SettingsModel(
             settingsStore: settingsStore,
