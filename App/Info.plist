@@ -30,5 +30,11 @@
     <string>Trackit turns your spoken sets into a workout log, on device.</string>
     <key>NSHealthUpdateUsageDescription</key>
     <string>Trackit writes each finished workout to Apple Health as a strength-training session.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
 </dict>
 </plist>
