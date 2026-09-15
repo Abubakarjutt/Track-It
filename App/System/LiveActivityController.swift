@@ -45,11 +45,15 @@ final class LiveActivityController {
     /// `Activity<WorkoutActivityAttributes>` isn't `Sendable` in this SDK,
     /// the compiler can't prove `self.activity` stays unaliased for the
     /// call's duration ("sending 'activity' risks causing data races").
-    /// `nonisolated(unsafe)` on the local copy is the documented escape
-    /// hatch: ActivityKit's own `Activity` methods are safe to call from
-    /// any isolation domain (that's the whole point of `update`/`end`
-    /// being `nonisolated`) — the SDK just predates `Sendable` annotations
-    /// expressing that.
+    /// `nonisolated(unsafe)` on each local copy, immediately before its one
+    /// `await` call, is the documented escape hatch: ActivityKit's own
+    /// `Activity` methods are safe to call from any isolation domain
+    /// (that's the whole point of `update`/`end` being `nonisolated`) — the
+    /// SDK just predates `Sendable` annotations expressing that. (A shared
+    /// helper that took the closure as a parameter was tried and rejected —
+    /// the `nonisolated(unsafe)` marking on a local doesn't survive being
+    /// passed through a closure boundary, so the same error resurfaces one
+    /// level down; the two-line repetition below is the actual fix.)
     private func sync() async {
         guard let state = WorkoutActivityState(from: session) else {
             if let activity {

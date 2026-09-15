@@ -780,6 +780,38 @@ struct WorkoutSessionModelTests {
         #expect(rig.restNotifications.scheduled.last == rig.model.restDeadline!)
     }
 
+    /// Spec acceptance test 2 (cluster 7c): "Foregrounding after a gap
+    /// reconciles rest state correctly." Rest is timestamp arithmetic, not a
+    /// live tick loop (Task 2's `restDeadline`), so a gap with zero `tick()`
+    /// calls — the app backgrounded, no polling — must not desync anything:
+    /// the deadline it started with stays exactly that deadline, and a
+    /// single `tick()` call once foregrounded reconciles `isRestTargetReached`
+    /// correctly from wall-clock time alone, with no missed intermediate
+    /// ticks to catch up on.
+    @Test("foregrounding after a gap with no ticking still reconciles rest state (cluster 7c)")
+    func foregroundingAfterGapReconcilesRestState() async throws {
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"]],
+            now: { clock }
+        )
+        await say(rig) // start
+        await say(rig) // set 1 — rest starts at 1000
+
+        let deadlineBeforeGap = rig.model.restDeadline!
+        #expect(rig.model.isRestTargetReached == false)
+
+        // The gap: clock jumps well past the deadline with no `tick()` calls
+        // in between — the backgrounded app never polled.
+        clock = deadlineBeforeGap.addingTimeInterval(60)
+
+        // Foregrounding calls `tick()` exactly once to reconcile.
+        rig.model.tick()
+
+        #expect(rig.model.restDeadline == deadlineBeforeGap)
+        #expect(rig.model.isRestTargetReached == true)
+    }
+
     @Test("the edit wrappers are a no-op when no workout is open")
     func editWrappersNoOpWithoutWorkout() throws {
         let rig = try makeRig(script: [])
