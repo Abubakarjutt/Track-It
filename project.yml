@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.abubakarsahi
   deploymentTarget:
     iOS: "17.0"
+    watchOS: "10.0"
   createIntermediateGroups: true
 packages:
   WorkoutLoggerCore:
@@ -14,16 +15,19 @@ targets:
     type: application
     platform: iOS
     sources:
-      # Widgets/** is excluded here and picked up by TrackitWidgets below
-      # instead — its Swift files (a second @main WidgetBundle, the widget
-      # views) must not also compile into the app target. Widgets/Shared is
-      # the one part both targets need (the ActivityAttributes contract),
-      # so it's re-added as its own explicit source path.
+      # Widgets/** and Watch/**/WatchWidgets/** are excluded here and picked
+      # up by TrackitWidgets/TrackitWatch/TrackitWatchWidgets below instead
+      # — their Swift files (a second @main, watch-only WidgetKit code) must
+      # not also compile into the iOS app target. The two Shared dirs are
+      # the one part multiple targets need, so each is re-added explicitly.
       - path: App
         excludes:
           - "Tests/**"
           - "Widgets/**"
+          - "Watch/**"
+          - "WatchWidgets/**"
       - path: App/Widgets/Shared
+      - path: App/Watch/Shared
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
@@ -38,6 +42,8 @@ targets:
         product: WorkoutLoggerApp
       - target: TrackitWidgets
         embed: true
+      - target: TrackitWatch
+        embed: true
   TrackitWidgets:
     type: app-extension
     platform: iOS
@@ -49,6 +55,36 @@ targets:
         SWIFT_VERSION: "6.0"
         INFOPLIST_FILE: App/Widgets/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.abubakarsahi.trackit.widgets
+        SKIP_INSTALL: "NO"
+  TrackitWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: App/Watch
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "4"
+        SWIFT_VERSION: "6.0"
+        INFOPLIST_FILE: App/Watch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/Watch/TrackitWatch.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.abubakarsahi.trackit.watch
+        SKIP_INSTALL: "NO"
+    dependencies:
+      - target: TrackitWatchWidgets
+        embed: true
+  TrackitWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: App/WatchWidgets
+      - path: App/Watch/Shared
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "4"
+        SWIFT_VERSION: "6.0"
+        INFOPLIST_FILE: App/WatchWidgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/WatchWidgets/TrackitWatchWidgets.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.abubakarsahi.trackit.watch.widgets
         SKIP_INSTALL: "NO"
   TrackitTests:
     type: bundle.ui-testing
