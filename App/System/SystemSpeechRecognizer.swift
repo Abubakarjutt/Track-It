@@ -47,7 +47,12 @@ final class SystemSpeechRecognizer: TranscriptSource {
     /// next `endUtterance()` fails fast rather than awaiting a task that was
     /// never started.
     private var pendingUnavailable = false
-    private var interruptionObserver: NSObjectProtocol?
+    // `nonisolated(unsafe)`: `deinit` on a `@MainActor` class runs
+    // nonisolated (no actor hop is possible once the last reference is
+    // gone), so this token — otherwise MainActor-isolated like every other
+    // stored property — must be readable there. Safe: by the time `deinit`
+    // runs nothing else can be concurrently accessing this instance.
+    private nonisolated(unsafe) var interruptionObserver: NSObjectProtocol?
 
     init() {
         observeInterruptions()
@@ -67,12 +72,18 @@ final class SystemSpeechRecognizer: TranscriptSource {
     private func observeInterruptions() {
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: nil
-        ) { [weak self] note in
+        ) { note in
+            // `Notification` isn't Sendable (its `userInfo` is `[AnyHashable:
+            // Any]?`), so the Sendable payload this needs — a plain enum and
+            // a Bool — is pulled out here, before hopping to the main actor,
+            // mirroring this file's SFSpeechRecognitionResult handling above.
             guard
-                let self,
                 let typeValue = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                 let type = AVAudioSession.InterruptionType(rawValue: typeValue)
             else { return }
+            let shouldResume = type == .ended
+                && (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
+                    .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } == true
             Task { @MainActor in
                 switch type {
                 case .began:
@@ -83,8 +94,6 @@ final class SystemSpeechRecognizer: TranscriptSource {
                     // do here beyond letting that happen naturally.
                     break
                 case .ended:
-                    let shouldResume = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
-                        .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
                     if shouldResume {
                         try? AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
                     }
