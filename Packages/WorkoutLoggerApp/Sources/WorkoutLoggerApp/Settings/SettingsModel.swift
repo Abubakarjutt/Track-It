@@ -21,6 +21,7 @@ public final class SettingsModel {
     @ObservationIgnored private let healthSync: HealthKitSyncModel
 
     private var _unit: MassUnit
+    private var _appearance: Appearance
     public private(set) var exercises: [Exercise]
     public private(set) var speechStatus: SpeechAuthorizationStatus
     /// The two privacy opt-ins — mirrored so the Privacy section re-renders on
@@ -60,6 +61,7 @@ public final class SettingsModel {
 
         libraryStore.seedIfEmpty(seed)
         self._unit = settingsStore.defaultUnit
+        self._appearance = settingsStore.appearance
         self.exercises = libraryStore.all()
         self.speechStatus = speechAuthorization.status
         self.analyticsEnabled = settingsStore.analyticsEnabled
@@ -81,6 +83,18 @@ public final class SettingsModel {
             _unit = newValue
             settingsStore.defaultUnit = newValue
             session.updateDefaultUnit(newValue)
+        }
+    }
+
+    /// The non-HUD colour scheme. Setting it persists; `RootView` reads it to
+    /// derive the `ColorScheme?` applied to everything except `HUDView`,
+    /// which always stays dark regardless of this value.
+    public var appearance: Appearance {
+        get { _appearance }
+        set {
+            guard newValue != _appearance else { return }
+            _appearance = newValue
+            settingsStore.appearance = newValue
         }
     }
 
