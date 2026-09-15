@@ -47,6 +47,53 @@ final class SystemSpeechRecognizer: TranscriptSource {
     /// next `endUtterance()` fails fast rather than awaiting a task that was
     /// never started.
     private var pendingUnavailable = false
+    private var interruptionObserver: NSObjectProtocol?
+
+    init() {
+        observeInterruptions()
+    }
+
+    deinit {
+        if let interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+    }
+
+    /// Best-effort recovery from a call/Siri/other-app interruption while
+    /// backgrounded (cluster 7c) — real coverage (does the utterance actually
+    /// survive; does a route change mid-utterance need its own handling) is
+    /// device-only, tracked as this cluster's device-verification acceptance
+    /// test 6, not asserted here.
+    private func observeInterruptions() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: nil
+        ) { [weak self] note in
+            guard
+                let self,
+                let typeValue = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+            else { return }
+            Task { @MainActor in
+                switch type {
+                case .began:
+                    // A call or another app took the session — this utterance
+                    // can't continue. `endUtterance()`'s own hang-path guards
+                    // (final result already gone) resolve any parked
+                    // continuation empty rather than hang; nothing further to
+                    // do here beyond letting that happen naturally.
+                    break
+                case .ended:
+                    let shouldResume = (note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
+                        .map { AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume) } ?? false
+                    if shouldResume {
+                        try? AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+                    }
+                @unknown default:
+                    break
+                }
+            }
+        }
+    }
 
     func beginUtterance() {
         guard recognizer != nil else {
@@ -59,7 +106,13 @@ final class SystemSpeechRecognizer: TranscriptSource {
         // runs it off-main. Fire-and-forget: the real gate is `SpeechAuthorization`.
         SFSpeechRecognizer.requestAuthorization { @Sendable _ in }
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.record, mode: .measurement, options: .duckOthers)
+        // `.playAndRecord`, not `.record` (cluster 7c): `.record` disallows
+        // audio output entirely, which would silently swallow every spoken
+        // readback once this session is active — and UIBackgroundModes:
+        // audio needs a playback-capable category to keep the process alive
+        // backgrounded at all. `.duckOthers` unchanged — still no reason to
+        // let other audio keep playing under an utterance or its readback.
+        try? session.setCategory(.playAndRecord, mode: .measurement, options: .duckOthers)
         try? session.setActive(true, options: .notifyOthersOnDeactivation)
 
         let request = SFSpeechAudioBufferRecognitionRequest()
