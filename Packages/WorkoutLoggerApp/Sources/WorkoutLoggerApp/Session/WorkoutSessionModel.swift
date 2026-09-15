@@ -514,6 +514,17 @@ public final class WorkoutSessionModel {
         return workout?.entries.lastIndex { $0.exercise.name == name }
     }
 
+    /// The entry the next set will be logged against — the one
+    /// `activeExerciseName` names, falling back to the workout's last entry
+    /// when there's no active-name match (e.g. no workout open). Public
+    /// sibling of `activeEntryIndex()`: `HUDProjection` and the Live Activity
+    /// projection (cluster 7c) both need the whole entry, not just its index,
+    /// so the "not always the last entry" rule lives in exactly one place.
+    public func activeEntry() -> Entry? {
+        if let index = activeEntryIndex(), let workout { return workout.entries[index] }
+        return workout?.entries.last
+    }
+
     private func afterEngineEdit() {
         syncFromEngine()
         // re-validate activeExerciseName against the smaller workout; its
