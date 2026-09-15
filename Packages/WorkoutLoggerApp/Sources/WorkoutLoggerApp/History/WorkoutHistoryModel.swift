@@ -19,6 +19,11 @@ public final class WorkoutHistoryModel {
     /// distinct from an empty history (spec story 10 vs 9).
     public let isUnavailable: Bool
 
+    /// The most recently completed workout's `endedAt`, or `nil` — the one
+    /// fact cluster 7f's watch complication shows. Kept in lockstep with
+    /// `rows` inside `reload()`, which already runs after every mutation.
+    public private(set) var lastWorkoutEndedAt: Date?
+
     /// Whether there is a prior state to `undo()` / a undone state to `redo()`.
     /// Both stacks hold whole-`Workout` snapshots for the currently open workout
     /// and are cleared whenever a different workout is opened or one is deleted.
@@ -28,20 +33,30 @@ public final class WorkoutHistoryModel {
     private var redoStack: [Workout] = []
 
     @ObservationIgnored private let store: WorkoutHistoryStore
+    @ObservationIgnored private let watchTransport: WatchSummaryTransport
 
     /// Called with the freshly-persisted workout after every successful
     /// `applyEdit` / `undo` / `redo` — never on a failed save. The app wires
     /// this to re-sync the edited workout into Apple Health.
     @ObservationIgnored public var onWorkoutEdited: ((Workout) -> Void)?
 
-    public init(store: WorkoutHistoryStore, historyUnavailable: Bool = false) {
+    public init(
+        store: WorkoutHistoryStore, historyUnavailable: Bool = false,
+        watchTransport: WatchSummaryTransport = NoOpWatchSummaryTransport()
+    ) {
         self.store = store
         self.isUnavailable = historyUnavailable
+        self.watchTransport = watchTransport
         reload()
     }
 
     public func reload() {
+        let previousLastWorkoutEndedAt = lastWorkoutEndedAt
         rows = isUnavailable ? [] : Array(store.history().filter(\.isEnded).reversed())
+        lastWorkoutEndedAt = rows.first?.endedAt
+        if lastWorkoutEndedAt != previousLastWorkoutEndedAt {
+            watchTransport.send(lastWorkoutEndedAt: lastWorkoutEndedAt)
+        }
     }
 
     /// Erase every stored workout, then reload. The exercise library and
