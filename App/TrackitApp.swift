@@ -34,8 +34,10 @@ struct TrackitApp: App {
         let context = ModelContext(availability.container)
         let store = SwiftDataWorkoutStore(context: context)
         self.store = store
+        let watchSummaryTransport = SystemWatchSummaryTransport()
         self.historyModel = WorkoutHistoryModel(
-            store: store, historyUnavailable: availability.isDegraded
+            store: store, historyUnavailable: availability.isDegraded,
+            watchTransport: watchSummaryTransport
         )
 
         // Exercise library: seed on first launch, then read the user-owned set.
