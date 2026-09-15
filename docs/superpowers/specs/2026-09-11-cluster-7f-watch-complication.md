@@ -106,24 +106,66 @@ Device-only (needs a paired Apple Watch):
    workouts this week/month; today's total volume; current-exercise best; a
    streak count. Pick one primary (complications are tiny). The master spec
    gives no guidance.
+   > **Resolved 2026-09-15:** Days since last workout. Trivially computed
+   > (`history.filter(\.isEnded)`, most recent `endedAt`, no per-exercise
+   > `ExerciseProgress` projection needed), reads sensibly even with zero
+   > history (a placeholder dash), and it's the single glanceable fact that
+   > most directly answers PRODUCT.md's own success framing — "keep logging
+   > consistently... rather than abandoning logging altogether" — over a
+   > raw count (workouts this week) or a value (today's volume) that says
+   > nothing about consistency at a glance.
 2. **Which complication families?** `.accessoryCircular`, `.accessoryRectangular`,
    `.accessoryInline`, `.accessoryCorner`? More families = more layout work.
    Recommend circular + inline for a v1.1.
+   > **Resolved 2026-09-15:** `.accessoryCircular` + `.accessoryInline`, per
+   > this spec's own recommendation — the two lowest-effort, most-supported
+   > families across watch face styles, matching the "read-only, minimal"
+   > framing. `.accessoryRectangular`/`.accessoryCorner` deferred; add later
+   > if device use reveals a real gap.
 3. **Is a hosting watch app in scope, or complication-only?** You need *a* watch
    app target to ship a complication, but does it have any UI itself (a one-screen
    summary), or is it an empty shell? Empty shell is less work and matches
    "read-only".
+   > **Resolved 2026-09-15:** Empty shell. A single `WindowGroup` showing
+   > only the app name/icon, no functional UI, no logging capability, no
+   > navigation. It exists only because WidgetKit complications require a
+   > companion watch app target to host the extension — it's not a second
+   > product surface.
 4. **Transport: `WatchConnectivity` now, or wait for CloudKit (7a)?** If 7a
    lands, the watch could read the synced store directly and skip `WCSession`.
    Sequencing decision.
+   > **Resolved 2026-09-15:** `WatchConnectivity` now. 7a (CloudKit sync) is
+   > un-implemented and unscheduled — every other Cluster 7 item has shipped
+   > independently of it, and blocking 7f on 7a would stall it indefinitely.
+   > `WCSession.updateApplicationContext` with the small `WatchSummary`
+   > struct, per this spec's own recommendation. If 7a lands later, the
+   > watch's data source can migrate then; not this cluster's concern.
 5. **Refresh expectations.** Complications get a small daily refresh budget.
    "Read-only" and "updated occasionally" is the honest promise — confirm that's
    acceptable rather than users expecting real-time.
+   > **Resolved 2026-09-15:** Confirmed acceptable — "eventually consistent
+   > within the OS's complication refresh budget," never promised as
+   > real-time, matching acceptance test 5's own framing. No code
+   > implication beyond not over-promising in any UI copy.
 6. **watchOS deployment target** (drives ClockKit vs. WidgetKit API).
+   > **Resolved 2026-09-15:** watchOS 10.0. Pairs with the phone app's
+   > existing iOS 17 floor (watchOS 10 shipped alongside iOS 17), and is
+   > fully within the modern WidgetKit complication API — no ClockKit
+   > `CLKComplicationDataSource` fallback needed. The installed SDK
+   > (watchOS 26.5, confirmed via `xcodebuild -showsdks`) supports it.
 7. **Does it use the same semantic palette as 7e?** If light mode ships, the
    complication should honour the same colour meanings.
+   > **Resolved 2026-09-15:** Yes, so far as it applies — 7e (merged)
+   > introduced no dedicated `Palette`/asset-catalogue file, only standard
+   > SwiftUI dynamic system colors on non-HUD screens. The complication
+   > follows the same approach: standard dynamic colors, no new palette
+   > file. In practice this affects little — `.accessoryCircular`/
+   > `.accessoryInline` are rendered in the system's own tint per watch
+   > face and mostly ignore app-supplied color regardless of theme.
 8. **Priority.** Given how thin the spec is and the new-target cost, is this
    actually a v1.1 item or a "nice someday"? Worth confirming before investing.
+   > **Resolved 2026-09-15:** In scope — confirmed by the explicit request
+   > to start this cluster.
 
 ---
 
@@ -136,7 +178,7 @@ after 7a if CloudKit is happening (it changes the transport decision).
 
 ## Status
 
-- [ ] OPEN QUESTIONS resolved (esp. 1 primary fact, 3 scope, 4 transport)
+- [x] OPEN QUESTIONS resolved (esp. 1 primary fact, 3 scope, 4 transport). Done 2026-09-15.
 - [ ] `writing-plans` → plan file
 - [ ] watchOS app + widget-extension targets in `project.yml`
 - [ ] `WatchSummary` + phone publisher + watch timeline provider
