@@ -202,6 +202,22 @@ public final class WorkoutSessionModel {
         notLoggedNotice = false
     }
 
+    /// Discrete start/stop for a caller that can't distinguish "press" from
+    /// "release" — a headset remote button sends one signal per tap, not a
+    /// held state (cluster 7b, OPEN QUESTION 1). Idle starts an utterance
+    /// exactly like `pressed()`; while listening, stops it exactly like
+    /// `released()`. A tap that lands while a prior release is still
+    /// resolving (`isProcessing`, `isListening` already false) is ignored
+    /// rather than queued into a second overlapping utterance — `released()`'s
+    /// `inFlightReleases` guard exists precisely because overlap isn't safe.
+    public func toggleListening() {
+        if isListening {
+            Task { await released() }
+        } else if !isProcessing {
+            pressed()
+        }
+    }
+
     public func released() async {
         isListening = false
         let releasedAt = now()

@@ -147,6 +147,64 @@ struct WorkoutSessionModelTests {
         #expect(rig.voice.performed.contains(.earcon))
     }
 
+    @Test("toggleListening starts an utterance when idle, exactly like pressed()")
+    func toggleStartsWhenIdle() throws {
+        let rig = try makeRig(script: [["start workout"]])
+        #expect(rig.model.isListening == false)
+
+        rig.model.toggleListening()
+
+        #expect(rig.model.isListening == true)
+        #expect(rig.source.beganCount == 1)
+    }
+
+    @Test("toggleListening stops the utterance when listening, exactly like released()", .timeLimit(.minutes(1)))
+    func toggleStopsWhenListening() async throws {
+        let rig = try makeRig(script: [["start workout"]])
+        rig.model.toggleListening()
+        #expect(rig.model.isListening == true)
+
+        rig.model.toggleListening()
+
+        while rig.model.isListening { await Task.yield() }
+        #expect(rig.model.isListening == false)
+        #expect(rig.model.workout != nil)
+    }
+
+    @Test("a toggle that arrives while a release is still processing is ignored, not queued into a second utterance", .timeLimit(.minutes(1)))
+    func toggleIgnoredWhileProcessing() async throws {
+        let container = try ModelContainer(
+            for: WorkoutRecord.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let store = SwiftDataWorkoutStore(context: ModelContext(container))
+        let engine = WorkoutEngine(store: store, library: Self.library)
+        let gate = GatedTranscriptSource()
+        let model = WorkoutSessionModel(
+            engine: engine, transcriptSource: gate, readbackVoice: SpyReadbackVoice(),
+            haptics: SpyHaptics(), library: Self.library
+        )
+
+        model.toggleListening() // start
+        #expect(model.isListening == true)
+        model.toggleListening() // stop — begins the async release
+        while gate.waitingCount < 1 { await Task.yield() }
+        #expect(model.isProcessing == true)
+        #expect(model.isListening == false)
+
+        // A stray third tap lands mid-release: neither branch of
+        // toggleListening() applies (not listening, but processing), so it
+        // must be a no-op — no second beginUtterance(), no second endUtterance()
+        // racing the first.
+        model.toggleListening()
+        #expect(gate.beganCount == 1)
+        #expect(gate.waitingCount == 1)
+
+        gate.resume(with: [])
+        while model.isProcessing { await Task.yield() }
+        #expect(model.isListening == false)
+    }
+
     @Test("an unparseable utterance fires notCaught, offers candidates, logs nothing")
     func parseFailure() async throws {
         let rig = try makeRig(script: [["start workout"], ["flurbo"]])
