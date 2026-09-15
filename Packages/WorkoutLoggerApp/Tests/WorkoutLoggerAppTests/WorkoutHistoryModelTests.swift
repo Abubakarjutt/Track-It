@@ -44,6 +44,64 @@ struct WorkoutHistoryModelTests {
         #expect(model.isUnavailable == false)
     }
 
+    @Test("lastWorkoutEndedAt is the most recently completed workout's endedAt (cluster 7f)")
+    func lastWorkoutEndedAtTracksNewest() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        store.save(workout(started: 3_000, ended: 3_500, sets: [working(110, 5)]))
+        // An open workout (no endedAt) must never win — it isn't in `rows`.
+        store.save(workout(started: 5_000, ended: nil, sets: [working(120, 5)]))
+
+        let model = WorkoutHistoryModel(store: store)
+
+        #expect(model.lastWorkoutEndedAt == Date(timeIntervalSince1970: 3_500))
+    }
+
+    @Test("lastWorkoutEndedAt is nil with no completed workouts (cluster 7f)")
+    func lastWorkoutEndedAtNilWhenEmpty() throws {
+        let store = try inMemoryStore()
+        let model = WorkoutHistoryModel(store: store)
+        #expect(model.lastWorkoutEndedAt == nil)
+    }
+
+    @Test("the watch transport fires at init and again only when the newest workout actually changes (cluster 7f)")
+    func watchTransportFiresOnRealChangesOnly() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        let transport = SpyWatchSummaryTransport()
+
+        let model = WorkoutHistoryModel(store: store, watchTransport: transport)
+        #expect(transport.sent == [Date(timeIntervalSince1970: 1_500)])
+
+        // A reload with no underlying store change must not re-send.
+        model.reload()
+        #expect(transport.sent == [Date(timeIntervalSince1970: 1_500)])
+
+        // A genuinely newer completed workout must re-send exactly once.
+        store.save(workout(started: 3_000, ended: 3_500, sets: [working(110, 5)]))
+        model.reload()
+        #expect(transport.sent == [
+            Date(timeIntervalSince1970: 1_500), Date(timeIntervalSince1970: 3_500),
+        ])
+    }
+
+    @Test("deleting the newest workout re-sends the new-newest (or nil) value (cluster 7f)")
+    func watchTransportFiresOnDelete() throws {
+        let store = try inMemoryStore()
+        store.save(workout(started: 1_000, ended: 1_500, sets: [working(100, 5)]))
+        let newest = workout(started: 3_000, ended: 3_500, sets: [working(110, 5)])
+        store.save(newest)
+        let transport = SpyWatchSummaryTransport()
+        let model = WorkoutHistoryModel(store: store, watchTransport: transport)
+        #expect(transport.sent == [Date(timeIntervalSince1970: 3_500)])
+
+        model.deleteWorkout(newest)
+
+        #expect(transport.sent == [
+            Date(timeIntervalSince1970: 3_500), Date(timeIntervalSince1970: 1_500),
+        ])
+    }
+
     @Test("applyEdit with replacingSet persists the change and re-selects the workout")
     func editPersistsAndReSelects() throws {
         let store = try inMemoryStore()
