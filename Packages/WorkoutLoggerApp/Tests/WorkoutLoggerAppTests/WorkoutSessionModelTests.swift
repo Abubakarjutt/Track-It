@@ -703,6 +703,26 @@ struct WorkoutSessionModelTests {
         #expect(model.activeExerciseName == "Back Squat")
     }
 
+    @Test("activeEntry() resolves the entry activeExerciseName names, not always the last one added (cluster 7c)")
+    func activeEntryTracksActiveExerciseName() async throws {
+        let bench = Exercise(name: "Bench Press", aliases: ["bench"])
+        let squat = Exercise(name: "Back Squat", aliases: ["squat"])
+        let (model, _, _) = try makeMultiExerciseModel(
+            script: [["start workout"], ["bench 100 for 5"], ["squat 140 for 5"], ["bench"]],
+            exercises: [bench, squat]
+        )
+        for _ in 0..<4 { model.pressed(); await model.released() }
+        // Active exercise moved back to Bench (re-announced last) — activeEntry()
+        // must follow, not fall back to the last entry added (Back Squat).
+        #expect(model.activeEntry()?.exercise.name == "Bench Press")
+    }
+
+    @Test("activeEntry() is nil with no open workout (cluster 7c)")
+    func activeEntryNilWithNoWorkout() throws {
+        let rig = try makeRig(script: [])
+        #expect(rig.model.activeEntry() == nil)
+    }
+
     @Test("the edit wrappers are a no-op when no workout is open")
     func editWrappersNoOpWithoutWorkout() throws {
         let rig = try makeRig(script: [])
