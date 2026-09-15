@@ -270,7 +270,7 @@ with 7b (earbud button in background, done) and 7e (visual design, done).
 ## Status
 
 - [x] OPEN QUESTIONS resolved and written back. Done 2026-09-15.
-- [ ] `writing-plans` → plan file
-- [ ] Deliverable 1: background modes + audio session + timestamp-based rest
-- [ ] Deliverable 2: widget extension target + Live Activity views + controller
+- [x] `writing-plans` → plan file. `docs/superpowers/plans/2026-09-15-cluster-7c-background-audio-live-activity.md`.
+- [x] Deliverable 1: background modes + audio session + timestamp-based rest. Done 2026-09-15.
+- [x] Deliverable 2: widget extension target + Live Activity views + controller. Done 2026-09-15.
 - [ ] device verification (both deliverables) + battery measurement
