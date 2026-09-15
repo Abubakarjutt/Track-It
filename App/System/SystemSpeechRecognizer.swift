@@ -69,6 +69,14 @@ final class SystemSpeechRecognizer: TranscriptSource {
     /// survive; does a route change mid-utterance need its own handling) is
     /// device-only, tracked as this cluster's device-verification acceptance
     /// test 6, not asserted here.
+    ///
+    /// TODO(7c follow-up): this handles `interruptionNotification` only.
+    /// `AVAudioSession.routeChangeNotification` (headphones unplugged
+    /// mid-utterance, etc.) is real scope per the spec's Deliverable 1 seam
+    /// but isn't package-testable and wasn't one of this cluster's resolved
+    /// OPEN QUESTIONS — deliberately deferred to the device-verification
+    /// pass (acceptance test 6) to see whether it's actually needed before
+    /// building untested speculative handling now.
     private func observeInterruptions() {
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: nil
