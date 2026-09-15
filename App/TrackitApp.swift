@@ -17,6 +17,10 @@ struct TrackitApp: App {
     private let store: SwiftDataWorkoutStore
     private let telemetryUploader: TelemetryUploader
     private let historyUnavailable: Bool
+    // Retained only so its MPRemoteCommandCenter registration and
+    // withObservationTracking loop stay alive for the app's lifetime
+    // (cluster 7b) — never read after init.
+    private let remotePushToTalk: RemoteCommandPushToTalk
 
     init() {
         let storeURL = URL.applicationSupportDirectory.appending(path: "Trackit.store")
@@ -105,6 +109,7 @@ struct TrackitApp: App {
             onUnresolvedUtterance: { failedUtterances.capture($0) }
            )
       _model = State(initialValue: session)
+        self.remotePushToTalk = RemoteCommandPushToTalk(session: session)
 
         self.settingsModel = SettingsModel(
             settingsStore: settingsStore,
