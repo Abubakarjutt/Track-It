@@ -81,6 +81,17 @@ struct SettingsModelTests {
         #expect(rig.session.displayUnit == .kilograms)
     }
 
+    @Test("appearance is read from the store and, when changed, persisted")
+    func appearanceGetSet() throws {
+        let rig = try makeRig(settingsStore: InMemorySettingsStore(appearance: .system))
+        #expect(rig.settings.appearance == .system)
+
+        rig.settings.appearance = .light
+
+        #expect(rig.settingsStore.appearance == .light)
+        #expect(rig.settings.appearance == .light)
+    }
+
     @Test("addExercise persists, refreshes the list, and pushes the library live")
     func addExercisePushes() throws {
         let rig = try makeRig(seed: [Exercise(name: "Bench Press")])
