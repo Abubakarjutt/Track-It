@@ -212,8 +212,21 @@ is its own gate, same style as the 5a/cluster-5 device pass.
 ## Status
 
 - [x] OPEN QUESTIONS resolved and written back. Done 2026-09-15.
-- [ ] package slice (`WorkoutSessionModel.toggleListening()`) — TDD
-- [ ] `App/System/RemoteCommandPushToTalk` + `TrackitApp.swift` wiring
+- [x] package slice (`WorkoutSessionModel.toggleListening()`) — TDD. Done
+      2026-09-15: idle → start, listening → stop, ignored while
+      `isProcessing`. 3 tests (+ a 4th folded in review covering
+      acceptance test 3 — identical failed-catch feedback via the toggle
+      path).
+- [x] `App/System/RemoteCommandPushToTalk` + `TrackitApp.swift` wiring.
+      Done 2026-09-15: registers `togglePlayPauseCommand` only,
+      publishes/clears `MPNowPlayingInfoCenter` info via
+      `withObservationTracking` on `session.hasActiveWorkout`, retained
+      in `TrackitApp.init()`. Plus a one-line `SettingsView` Speech
+      footer (Q6). Two-axis review: 0 Spec gaps left open, 0 Standards
+      hard violations (no documented App-layer standard exists yet);
+      1 judgement call folded (undocumented MediaPlayer callback-thread
+      assumption, now commented). Core 169 / App 266 green,
+      `xcodebuild` BUILD SUCCEEDED.
 - [ ] device verification with wired + Bluetooth headsets (incl. confirming
       Q3's audio-session category choice; escalate to `.playAndRecord` if
       `.record` doesn't reliably receive the toggle command)
