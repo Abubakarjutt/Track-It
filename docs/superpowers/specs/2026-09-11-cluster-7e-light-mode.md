@@ -91,6 +91,25 @@ was chosen in the first place.
 
 ## OPEN QUESTIONS
 
+> **All 4 resolved 2026-09-15** (owner route: accepted every recommendation via
+> `AskUserQuestion`). Scope = **(b) non-HUD only**: `HUDView` (and only
+> `HUDView`) stays permanently forced-dark; everything else in `RootView` —
+> `OnboardingView`, `LaunchGateView`, and every screen reachable through the
+> `NavigationStack`'s pushed destinations (`HistoryListView`,
+> `MuscleGroupStimulusView`, `SettingsView`, `ExerciseLibraryView`,
+> `ExerciseEditView`, `SetEditView`, `WorkoutDetailView`,
+> `RecognitionReviewView`, `SetListSheet`, `TapSelectSheet`, `ShareSheet`) —
+> respects a new explicit `appearance` setting (`.system`/`.light`/`.dark`,
+> default `.dark`). High-contrast variants are out of scope for this pass. A
+> re-grep of every `App/Views/*.swift` file except `HUDView.swift` (done as
+> part of resolving Q3, see below) found the non-HUD screens already use only
+> SwiftUI's dynamic system colours (`.secondary`, `.primary`, `.red`,
+> `.yellow`) — no asset-catalogue colour set or custom `Palette` enum is
+> needed. The only two literal-colour offenders are `LaunchGateView.swift:12`
+> and `OnboardingView.swift:19` (each a single `.foregroundStyle(.white)`).
+> This considerably shrinks the "Effort" estimate below — see the updated
+> section at the end of this file.
+
 1. **Does light mode ship at all, and how far?** Options:
    - (a) **No.** Keep forced-dark; close this item as "won't do, brand
      decision". Legitimate given the master spec's stance.
@@ -101,36 +120,129 @@ was chosen in the first place.
      the HUD, plus a `system/light/dark` setting.
    This choice determines whether steps 1–5 above are all needed or just a
    subset.
+      > **Resolved 2026-09-15: (b) non-HUD only.** The exact boundary is
+      > `HUDView` — the screen rendered by `RootView`'s `else` branch (`if
+      > onboardingModel.shouldShowOnboarding { OnboardingView } else if
+      > model.pendingStaleWorkout != nil { LaunchGateView } else { NavigationStack
+      > { HUDView … } }`). Only `HUDView` keeps a scoped, unconditional
+      > `.preferredColorScheme(.dark)`. `OnboardingView` and `LaunchGateView`
+      > are classified as "the rest of the app," not "the HUD" — they're
+      > infrequently-seen framing screens (first-run, resume-prompt), not the
+      > glanceable mid-workout surface the brand language is about, and the
+      > original spec's own framing ("the rest is a normal app") reads them in.
+      > Every screen reached through the `NavigationStack`'s pushed
+      > destinations (`HistoryListView`, `MuscleGroupStimulusView`,
+      > `SettingsView`, and everything nested under those —
+      > `ExerciseLibraryView`, `ExerciseEditView`, `SetEditView`,
+      > `WorkoutDetailView`, `RecognitionReviewView`, `SetListSheet`,
+      > `TapSelectSheet`, `ShareSheet`) also respects the setting — pushed
+      > destinations do **not** inherit a `.preferredColorScheme` applied only
+      > to `HUDView`'s own content, since they're separate views inserted onto
+      > the stack, not descendants of that content — so no extra work is needed
+      > to keep them out of the forced-dark scope.
+      > **Mechanical consequence for `RootView.swift`:** the shared
+      > `Color.black.ignoresSafeArea()` at line 25 currently paints behind all
+      > three branches (Onboarding, LaunchGate, HUD). It must move from the
+      > outer `ZStack` to specifically the HUD branch (wrapped around
+      > `NavigationStack { HUDView … }` alongside the relocated
+      > `.preferredColorScheme(.dark)`), or Onboarding/LaunchGate would render
+      > light-mode text on a hardcoded black background. This is the one
+      > structural change `RootView.swift` needs beyond the setting itself.
 2. **Setting vs. pure system-follow.** If light mode ships, is there an in-app
    `system/light/dark` picker (like many apps) or does it just honour the OS
    setting with no control? A picker is more work (step 4) but expected by users.
+      > **Resolved 2026-09-15: explicit picker.** `SettingsStore` gains an
+      > `appearance: Appearance` (`.system`/`.light`/`.dark`) property,
+      > `default .dark` — preserving the current out-of-the-box look for
+      > non-HUD screens until a user opts in, mirroring the existing
+      > `unit`/`analyticsEnabled` pattern (`SettingsStore` persists,
+      > `SettingsModel` mirrors as `@Observable` + a setter that writes
+      > through). `SettingsView` gets a picker. `RootView` maps
+      > `settingsModel.appearance` to a `ColorScheme?` (`nil` for `.system`)
+      > and applies it to everything **except** the `HUDView` branch, which
+      > stays hardcoded `.dark` regardless of this setting.
 3. **Light palette design.** Who designs it? The dark palette is essentially
    `black / white / green / secondary`. The light equivalent is not "invert" —
    `green` on white, the talk-button fill, and the "rest target reached" signal
    all need deliberate choices. Needs a design consultation, and it interacts
    with 7c's Live Activity and 7f's Watch complication (both should use the same
    semantic palette).
+      > **Resolved 2026-09-15: proposed now, and it turns out to be nearly
+      > free.** Re-grepped every `App/Views/*.swift` file except `HUDView.swift`
+      > for colour literals (`Color\.`, `.white`, `.black`, `foregroundStyle`,
+      > `foregroundColor`, `.background(`). Result: non-HUD screens already use
+      > **only SwiftUI's dynamic system colours** — `.secondary` (11 sites:
+      > `ExerciseLibraryView`, `MuscleGroupStimulusView`, `LaunchGateView`,
+      > `HistoryListView`, `SetEditView`, `OnboardingView`, `SettingsView` ×4),
+      > `.primary` (`RecognitionReviewView`), `.red` (error text in
+      > `ExerciseEditView`, `WorkoutDetailView`), `.yellow` (the PR-trophy badge
+      > in `WorkoutDetailView`) — every one of which already auto-adapts to
+      > light/dark with zero code changes. There is **no** decorative `.green`
+      > anywhere outside `HUDView` (confirms Q5 below). The only two literal
+      > offenders are `LaunchGateView.swift:12` and `OnboardingView.swift:19`
+      > (`.foregroundStyle(.white)` on each screen's headline) — both become
+      > `.foregroundStyle(.primary)` (or drop the modifier: `.primary` is the
+      > default). **No asset-catalogue colour set and no custom `Palette` enum
+      > are needed for this scope** — the "semantic colour layer" the original
+      > spec anticipated already exists as SwiftUI's built-in dynamic colours,
+      > because forced-dark previously masked the fact that non-HUD screens were
+      > never actually hardcoded beyond those two spots. The
+      > `black/white/green/secondary` palette this question describes is
+      > `HUDView`'s alone (out of scope, Q1) — nothing here interacts with 7c's
+      > Live Activity or 7f's Watch complication, since neither touches non-HUD
+      > screens; if 7c or 7f ever need a semantic palette of their own, that is
+      > a separate, later design pass.
 4. **High contrast / accessibility variants.** Asset catalogue supports
    "any/light/dark" × "normal/high contrast". In scope, or just light/dark?
+      > **Resolved 2026-09-15: just light/dark.** High-contrast variants are
+      > explicitly out of scope for this pass — a later accessibility pass, if
+      > wanted. Consistent with Q3's finding: there is no asset catalogue in
+      > play here to add variants to.
 5. **The `one-meaning` colour rule.** The README work (`git log`: *"drop
    decorative green per one-meaning rule"*) suggests the project has a rule that
    a colour carries exactly one meaning. The light palette must preserve that —
    green = "good / target reached", nothing else. Confirm the rule and apply it.
+      > **Resolved 2026-09-15: confirmed, already respected, no change needed.**
+      > The Q3 grep is exhaustive for non-HUD screens and found zero uses of
+      > `Color.green` or `.green` outside `HUDView.swift` — the rule already
+      > holds today, this diff doesn't touch it, and there is nothing to remap.
+      > `WorkoutDetailView`'s `.yellow` trophy badge is a distinct colour for a
+      > distinct meaning (a PR achievement, not "target reached") and doesn't
+      > collide with the rule. Worth reasserting as a review criterion on any
+      > future PR that touches `App/Views/`, but no doc changes are needed by
+      > this resolution alone.
 
 ---
 
 ## Effort
 
-If (a): zero code, just close it. If (b): ~half a day. If (c): 1–2 days of code
-(the literal-colour sweep is the bulk) **plus a design pass that is the real
-gate**. `writing-plans` pass only for (c). Contained to `App/Views/` +
-`Assets.xcassets` + one small `SettingsStore`/`SettingsModel` slice.
+**Resolved 2026-09-15 — smaller than originally estimated.** No design pass
+needed (Q3's grep found the palette was already SwiftUI-dynamic everywhere
+except two literals). Real work: (1) `SettingsStore`/`SettingsModel`
+`appearance` slice — a small TDD slice, same shape as `unit`; (2)
+`SettingsView` picker; (3) `RootView.swift` restructuring — move
+`.preferredColorScheme(.dark)` and `Color.black.ignoresSafeArea()` from the
+shared `ZStack` to scope around the HUD branch only, and apply
+`settingsModel.appearance` to the rest; (4) swap the two `.white` literals in
+`LaunchGateView.swift`/`OnboardingView.swift` to `.primary`. No `Assets.xcassets`
+work, no new `Palette` type. Rough: **2–3 hours**, not half a day. No
+`writing-plans` pass needed — small enough for direct TDD slices. No device
+work beyond an eyeball check of light mode on a simulator/device (not a hard
+gate — nothing here is arms-length/gym-lighting-critical like the HUD).
 
 ## Status
 
-- [ ] OPEN QUESTION 1 resolved — decide (a) / (b) / (c)
-- [ ] (if b/c) light palette designed
-- [ ] (if b/c) semantic colour layer + literal-colour sweep
-- [ ] (if b/c) `appearance` setting slice + Settings picker
-- [ ] (if b/c) contrast checks light + dark, device eyeball
+- [x] OPEN QUESTION 1 resolved — **(b) non-HUD only**, boundary = `HUDView`
+      alone stays forced-dark. Done 2026-09-15.
+- [x] OPEN QUESTIONS 2–5 resolved — explicit picker (Q2), palette designed
+      and found to need no new abstraction (Q3), light/dark only, no
+      high-contrast (Q4), one-meaning rule confirmed already respected (Q5).
+      Done 2026-09-15.
+- [ ] `appearance` setting slice (`SettingsStore` + `SettingsModel`) — TDD
+- [ ] `SettingsView` picker
+- [ ] `RootView.swift`: scope `.preferredColorScheme(.dark)` +
+      `Color.black.ignoresSafeArea()` to the HUD branch only; apply
+      `settingsModel.appearance` elsewhere
+- [ ] `LaunchGateView.swift:12` / `OnboardingView.swift:19`: `.white` → `.primary`
+- [ ] light-mode eyeball check (simulator/device), not a hard gate
 - [ ] update parent roadmap + memory
