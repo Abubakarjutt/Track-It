@@ -74,6 +74,10 @@ public final class WorkoutSessionModel {
     @ObservationIgnored private let transcriptSource: TranscriptSource
     @ObservationIgnored private let readbackVoice: ReadbackVoice
     @ObservationIgnored private let haptics: Haptics
+    /// Schedules/cancels the backgrounded rest-complete signal (cluster 7c).
+    /// Defaults to a no-op — most callers (every test but a few, the whole
+    /// suite before this cluster) don't care about the backgrounded case.
+    @ObservationIgnored private let restNotifications: RestNotificationScheduler
     // Tracked (not @ObservationIgnored): both change live via the setters
     // below, and `displayUnit` reads `unit`, so an already-built surface
     // holding this model — the History / Progress screens reached from the
@@ -110,6 +114,7 @@ public final class WorkoutSessionModel {
         now: @escaping () -> Date = Date.init,
         knownBestExercises: Set<String> = [],
         staleRecovery: StaleWorkoutRecovery? = nil,
+        restNotifications: RestNotificationScheduler = NoOpRestNotificationScheduler(),
         history: @escaping () -> [Workout] = { [] },
         onWorkoutEnded: @escaping (Workout) -> Void = { _ in },
         onTelemetry: @escaping (TelemetryEvent) -> Void = { _ in },
@@ -125,6 +130,7 @@ public final class WorkoutSessionModel {
         self.now = now
         self.knownBestExercises = knownBestExercises
         self.staleRecovery = staleRecovery
+        self.restNotifications = restNotifications
         self.history = history
         self.onWorkoutEnded = onWorkoutEnded
         self.onTelemetry = onTelemetry
@@ -541,11 +547,28 @@ public final class WorkoutSessionModel {
     }
 
     private func syncFromEngine() {
+        let previousRestStartedAt = restStartedAt
         workout = engine.workout
         personalRecords = engine.personalRecords
         restStartedAt = engine.restStartedAt
         restTargetSeconds = engine.currentRestTargetSeconds
         isRestTargetReached = engine.isRestTargetReached
+
+        // Every rest-timer transition in the app flows through this one
+        // method (voice start/skip-rest, a newly-logged set restarting rest,
+        // workout end clearing it, and cold-launch resume of a workout with
+        // rest already running) — so diffing here, once, covers all of them
+        // for the backgrounded rest-complete notification (cluster 7c).
+        // `previousRestStartedAt` starts `nil` (its declared default) before
+        // `init()`'s first call here, so a resumed in-progress rest still
+        // reads as a real nil→non-nil transition and gets scheduled.
+        if restStartedAt != previousRestStartedAt {
+            if let deadline = restDeadline {
+                restNotifications.schedule(deadline: deadline)
+            } else {
+                restNotifications.cancel()
+            }
+        }
     }
 
     // MARK: - Small helpers

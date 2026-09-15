@@ -18,6 +18,7 @@ struct WorkoutSessionModelTests {
         let voice: SpyReadbackVoice
         let haptics: SpyHaptics
         let endedWorkouts: EndedWorkoutSink
+        let restNotifications: SpyRestNotificationScheduler
        }
 
     /// Box so the `onWorkoutEnded` `@Sendable`-tainted closure can record fired
@@ -48,15 +49,20 @@ struct WorkoutSessionModelTests {
         let voice = SpyReadbackVoice()
         let haptics = SpyHaptics()
         let ended = EndedWorkoutSink()
+        let restNotifications = SpyRestNotificationScheduler()
         let model = WorkoutSessionModel(
             engine: engine, transcriptSource: source, readbackVoice: voice,
             haptics: haptics, library: Self.library, unit: unit,
             capReadbackAtEarcon: capAtEarcon, now: now,
             knownBestExercises: knownBestExercises ?? Set(knownBests.keys.map(\.name)),
+            restNotifications: restNotifications,
             history: history,
             onWorkoutEnded: { ended.add($0) }
          )
-        return Rig(model: model, source: source, voice: voice, haptics: haptics, endedWorkouts: ended)
+        return Rig(
+            model: model, source: source, voice: voice, haptics: haptics,
+            endedWorkouts: ended, restNotifications: restNotifications
+        )
        }
 
     private func say(_ rig: Rig) async {
@@ -736,6 +742,42 @@ struct WorkoutSessionModelTests {
     func restDeadlineNilWhenIdle() throws {
         let rig = try makeRig(script: [])
         #expect(rig.model.restDeadline == nil)
+    }
+
+    @Test("starting rest schedules a notification at the rest deadline (cluster 7c)")
+    func startingRestSchedulesNotification() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"]])
+        await say(rig)
+        await say(rig)
+        #expect(rig.restNotifications.scheduled == [rig.model.restDeadline!])
+        #expect(rig.restNotifications.cancelCount == 0)
+    }
+
+    @Test("skipping rest cancels the scheduled notification (cluster 7c)")
+    func skippingRestCancelsNotification() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"], ["skip rest"]])
+        await say(rig)
+        await say(rig)
+        await say(rig)
+        #expect(rig.model.restStartedAt == nil)
+        #expect(rig.restNotifications.cancelCount == 1)
+    }
+
+    @Test("a second rest period reschedules rather than stacking (cluster 7c)")
+    func secondRestReschedules() async throws {
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let rig = try makeRig(
+            script: [["start workout"], ["bench 100 for 5"], ["bench 100 for 5"]],
+            now: { clock }
+        )
+        await say(rig) // start
+        await say(rig) // set 1 — rest starts at 1000
+
+        clock = Date(timeIntervalSince1970: 1_030) // real clock advances, like production
+        await say(rig) // set 2 — restarts rest at 1030, a genuinely later deadline
+
+        #expect(rig.restNotifications.scheduled.count == 2)
+        #expect(rig.restNotifications.scheduled.last == rig.model.restDeadline!)
     }
 
     @Test("the edit wrappers are a no-op when no workout is open")
