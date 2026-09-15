@@ -95,7 +95,7 @@ struct SettingsView: View {
     }
 
     @ViewBuilder private var speechSection: some View {
-        Section("Speech") {
+        Section {
             HStack {
                 Text("Microphone access")
                 Spacer()
@@ -108,6 +108,10 @@ struct SettingsView: View {
                     }
                 }
             }
+        } header: {
+            Text("Speech")
+        } footer: {
+            Text("Your headset's centre button also starts and stops listening.")
         }
     }
 
