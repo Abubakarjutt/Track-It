@@ -84,3 +84,12 @@ public final class SpyHaptics: Haptics {
     public init() {}
     public func play(_ cue: HapticCue) { played.append(cue) }
 }
+
+/// Records every schedule/cancel call, in order — cluster 7c.
+public final class SpyRestNotificationScheduler: RestNotificationScheduler {
+    public private(set) var scheduled: [Date] = []
+    public private(set) var cancelCount = 0
+    public init() {}
+    public func schedule(deadline: Date) { scheduled.append(deadline) }
+    public func cancel() { cancelCount += 1 }
+}
