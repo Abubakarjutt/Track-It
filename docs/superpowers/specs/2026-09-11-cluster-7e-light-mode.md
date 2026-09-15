@@ -254,4 +254,5 @@ gate — nothing here is arms-length/gym-lighting-critical like the HUD).
 - [ ] light-mode eyeball check (simulator/device), not a hard gate —
       left for the device-verification pass (cluster 5); nothing here is
       gym-lighting-critical like the HUD.
-- [ ] update parent roadmap + memory
+- [x] update parent roadmap + memory. Done 2026-09-15: merged via PR #17;
+      `2026-09-11-v1.1-remaining-INDEX.md`'s status snapshot updated.
