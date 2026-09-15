@@ -12,14 +12,17 @@ struct SettingsFakesTests {
         #expect(store.defaultUnit == .kilograms)
         #expect(store.hasCompletedOnboarding == false)
         #expect(store.syncsToAppleHealth == false)
+        #expect(store.appearance == .dark)
 
         store.defaultUnit = .pounds
         store.hasCompletedOnboarding = true
         store.syncsToAppleHealth = true
+        store.appearance = .light
 
         #expect(store.defaultUnit == .pounds)
         #expect(store.hasCompletedOnboarding == true)
         #expect(store.syncsToAppleHealth == true)
+        #expect(store.appearance == .light)
       }
 
     @Test("FakeSpeechAuthorization reports its status and transitions on request()")

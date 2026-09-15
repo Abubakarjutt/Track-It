@@ -7,19 +7,22 @@ public final class InMemorySettingsStore: SettingsStore {
     public var syncsToAppleHealth: Bool
     public var analyticsEnabled: Bool
     public var recognitionReviewEnabled: Bool
+    public var appearance: Appearance
 
     public init(
         defaultUnit: MassUnit = .kilograms,
         hasCompletedOnboarding: Bool = false,
         syncsToAppleHealth: Bool = false,
         analyticsEnabled: Bool = false,
-        recognitionReviewEnabled: Bool = false
+        recognitionReviewEnabled: Bool = false,
+        appearance: Appearance = .dark
       ) {
         self.defaultUnit = defaultUnit
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.syncsToAppleHealth = syncsToAppleHealth
         self.analyticsEnabled = analyticsEnabled
         self.recognitionReviewEnabled = recognitionReviewEnabled
+        self.appearance = appearance
       }
 }
 
