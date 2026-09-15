@@ -723,6 +723,21 @@ struct WorkoutSessionModelTests {
         #expect(rig.model.activeEntry() == nil)
     }
 
+    @Test("restDeadline is restStartedAt + restTargetSeconds, computed with no ticking (cluster 7c)")
+    func restDeadlineIsPureArithmetic() async throws {
+        let rig = try makeRig(script: [["start workout"], ["bench 100 for 5"]])
+        await say(rig)
+        await say(rig)
+        let expected = rig.model.restStartedAt!.addingTimeInterval(rig.model.restTargetSeconds)
+        #expect(rig.model.restDeadline == expected)
+    }
+
+    @Test("restDeadline is nil when no rest is running (cluster 7c)")
+    func restDeadlineNilWhenIdle() throws {
+        let rig = try makeRig(script: [])
+        #expect(rig.model.restDeadline == nil)
+    }
+
     @Test("the edit wrappers are a no-op when no workout is open")
     func editWrappersNoOpWithoutWorkout() throws {
         let rig = try makeRig(script: [])

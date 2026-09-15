@@ -35,6 +35,14 @@ public final class WorkoutSessionModel {
     /// template value if one is armed, else the engine default. For a "1:23 / 2:00"
     /// style display.
     public private(set) var restTargetSeconds: TimeInterval = WorkoutEngine.defaultRestTargetSeconds
+    /// `restStartedAt + restTargetSeconds` — the wall-clock moment rest ends,
+    /// or `nil` when no rest is running. Pure derivation, no dependency on
+    /// `tick()` having run recently; used by anything that needs "when does
+    /// rest end" without polling (cluster 7c: the rest-completion local
+    /// notification and the Live Activity's self-rendering countdown).
+    public var restDeadline: Date? {
+        restStartedAt.map { $0.addingTimeInterval(restTargetSeconds) }
+    }
     /// Whether the current rest has reached its target. Snapshot of the engine,
     /// refreshed on every `tick()` because it moves with the clock.
     public private(set) var isRestTargetReached = false
