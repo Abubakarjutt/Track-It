@@ -92,6 +92,7 @@ struct TrackitApp: App {
             store: SystemFailedUtteranceStore(), settings: settingsStore
           )
 
+        let restNotifications = SystemRestNotificationScheduler()
         let session = WorkoutSessionModel(
             engine: engine,
             transcriptSource: SystemSpeechRecognizer(),
@@ -101,6 +102,7 @@ struct TrackitApp: App {
             unit: settingsStore.defaultUnit,
             knownBestExercises: Set(knownBests.keys.map(\.name)),
             staleRecovery: staleRecovery,
+            restNotifications: restNotifications,
             history: { store.history() },
             onWorkoutEnded: { workout in
                 Task { @MainActor in await healthSync.workoutEnded(workout) }
