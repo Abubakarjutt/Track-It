@@ -28,7 +28,9 @@ struct TrackitApp: App {
 
     init() {
         let storeURL = URL.applicationSupportDirectory.appending(path: "Trackit.store")
-        let availability = provisionStore(onDiskURL: storeURL)
+        let availability = provisionStore(
+            onDiskURL: storeURL, cloudKitContainerIdentifier: "iCloud.com.abubakarsahi.trackit"
+        )
         historyUnavailable = availability.isDegraded
 
         let context = ModelContext(availability.container)

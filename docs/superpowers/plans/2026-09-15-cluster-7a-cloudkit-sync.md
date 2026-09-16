@@ -339,10 +339,23 @@ it's the authority this plan argues from).
 - [ ] **Step 5: Run test to verify it passes, then the full suite**
 
   Run: `swift test --filter StoreProvisioningTests`
-  Expected: PASS (both the new test and the two pre-existing ones — default
-  `nil` keeps them CloudKit-free).
+  Expected: PASS.
+
+  **Ruling (2026-09-15, made during execution):** the `cloudKitIdentifierStillWorks`
+  test from Step 1 was run and reproducibly **crashed the whole `swift test`
+  process** — an uncatchable `NSInternalInconsistencyException`
+  ("bundleIdentifier != nil") thrown from CloudKit/PushKit off a background
+  queue when the CloudKit-mirroring `ModelContainer` deallocated, not a normal
+  test failure. An SPM test binary has no app bundle identifier for CloudKit
+  to register against. This is exactly the spec's OPEN QUESTION 1 resolution
+  ("there is no way to observe CloudKit's own behavior from a package unit
+  test") landing as a process-fatal bug rather than an inert no-op, so the
+  test was **removed**, replaced with a comment explaining why it can't
+  exist. The `cloudKitContainerIdentifier` parameter's real behavior is
+  verified only by the `xcodebuild` build (Task 4) and the device step.
   Run: `swift test --no-parallel`
-  Expected: 283/283, all green.
+  Expected: 282/282, all green (281 baseline + Task 2's one new test; Task 3
+  adds no net test given the ruling above).
 
 - [ ] **Step 6: Commit**
 
@@ -423,7 +436,8 @@ it's the authority this plan argues from).
   Run: `cd Packages/WorkoutLoggerCore && swift test` — expect 169/169
   unchanged (this cluster never touches Core).
   Run: `cd Packages/WorkoutLoggerApp && swift test --no-parallel` — expect
-  283/283 green (281 + Task 2's + Task 3's new tests).
+  282/282 green (281 + Task 2's new test; Task 3 adds no net test per its
+  Step 5 ruling above).
   Run: `xcodebuild -project Trackit.xcodeproj -scheme Trackit -destination 'generic/platform=iOS Simulator' build`
   — expect `** BUILD SUCCEEDED **`.
 
