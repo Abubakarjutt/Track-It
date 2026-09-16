@@ -239,7 +239,24 @@ plus the existing checklist is the plan.
 
 ## Status
 
-- [ ] 5a [IN-REPO] adapter + wiring re-audit, checklist tightening
+- [x] 5a [IN-REPO] adapter + wiring re-audit, checklist tightening. Done
+      2026-09-16. Re-audited all 9 `System*` adapters against their
+      protocols (the original 6 plus `SystemFailedUtteranceStore`,
+      `SystemSpeechAuthorization`, `SystemWatchSummaryTransport`,
+      `SystemRestNotificationScheduler` added by later clusters) —
+      every method signature, parameter label, and `async`/`throws`
+      marker matches; no drift found. Re-audited `App/TrackitApp.swift`
+      wiring against this spec's 3 named checks (`healthSync`
+      construction, `historyModel.onWorkoutEdited`, the
+      `TelemetryUploader`/`scenePhase` flush) — all 3 match exactly.
+      Tightened `docs/superpowers/checklists/2026-09-06-device-smoke-test.md`:
+      corrected the "PR trophy" line (the trophy badge is a post-hoc
+      History-detail view, not a live HUD element — only the haptic
+      fires live), named the exact animation Reduce Motion suppresses
+      (`HUDView`'s `isPulsingDim` pulse, not the press-down touch
+      feedback), and added a 4th regression-watch crash instance found
+      in cluster 7f (`WatchConnectivitySessionReceiver.shared`, same
+      Swift-6 static-mutable-state class as the original three).
 - [ ] 5a [DEVICE] full smoke pass, both UI tests green on device
 - [ ] 5b endpoint decision (issue #6) + [DEVICE] transport confirmation
 - [ ] 5c [DEVICE] median measurement + gate-placement decision
