@@ -92,8 +92,14 @@ handling, and CloudKit quota behaviour.
 - Two physical iOS devices signed into the **same** iCloud account.
 - An Apple Developer account with a CloudKit container provisioned.
 - `com.apple.developer.icloud-services` + `com.apple.developer.icloud-container-identifiers`
-  in `App/Trackit.entitlements`, plus the iCloud + CloudKit capability in
-  `project.yml`.
+  in `App/Trackit.entitlements`. **Resolved 2026-09-15:** no separate
+  `project.yml` capability entry was needed — this repo's `project.yml` has
+  no xcodegen `capabilities:` key for any target, including the existing
+  HealthKit entitlement; capabilities are wired purely via
+  `CODE_SIGN_ENTITLEMENTS` pointing at the entitlements file. CloudKit
+  mirrors that exact shape (verified: `xcodebuild -scheme Trackit
+  -destination 'generic/platform=iOS Simulator' build` → `** BUILD
+  SUCCEEDED **`).
 - CloudKit Dashboard access to inspect/reset the schema during development.
 - Cannot be meaningfully verified in the Simulator or without iCloud.
 
@@ -176,6 +182,11 @@ constraint work (OPEN QUESTION 4) to touch cluster 4's code.
 ## Status
 
 - [x] OPEN QUESTIONS resolved and written back into this spec. Done 2026-09-15.
-- [ ] `writing-plans` → `docs/superpowers/plans/<date>-v1.1-cluster-7a-cloudkit-sync.md`
-- [ ] implementation
+- [x] `writing-plans` → `docs/superpowers/plans/2026-09-15-cluster-7a-cloudkit-sync.md`. Done 2026-09-15.
+- [x] implementation. Done 2026-09-15 (PR pending). Core 169/169, App 282/282
+      (`swift test --no-parallel`), `xcodebuild -scheme Trackit -destination
+      'generic/platform=iOS Simulator' build` → `** BUILD SUCCEEDED **`.
+      Two-axis code review: 0 Standards hard violations (3 minor judgement
+      calls, left as-is), 0 Spec gaps after one doc clarification folded
+      (the "Hardware / account dependencies" `project.yml` line above).
 - [ ] two-device manual verification
