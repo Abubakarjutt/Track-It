@@ -52,4 +52,15 @@ struct StoreProvisioningTests {
         try context.save()
         #expect(try context.fetchCount(FetchDescriptor<WorkoutRecord>()) == 1)
     }
+
+    // No test exercises `provisionStore(cloudKitContainerIdentifier:)` with a
+    // real identifier: doing so was tried and reproducibly crashes the whole
+    // `swift test` process (not just the one test) with an uncatchable
+    // NSInternalInconsistencyException ("bundleIdentifier != nil") thrown
+    // from CloudKit/PushKit off a background queue when the CloudKit-mirroring
+    // ModelContainer deallocates -- an SPM test binary has no app bundle
+    // identifier for CloudKit to register against. This confirms the spec's
+    // OPEN QUESTION 1 resolution that CloudKit's own behavior cannot be
+    // observed from a package unit test; that parameter is verified only by
+    // the real `xcodebuild` build (Task 4) and, ultimately, the device step.
 }
