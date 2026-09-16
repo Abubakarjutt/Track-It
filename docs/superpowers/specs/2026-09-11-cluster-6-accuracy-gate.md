@@ -152,28 +152,44 @@ Once real numbers are stable:
 
 ---
 
-## OPEN QUESTIONS
+## OPEN QUESTIONS — resolved 2026-09-16
 
-1. **How are recogniser n-best lists captured on device?** Options: a
-   `#if DEBUG` hook in `SystemSpeechRecognizer` that writes each utterance's
-   hypotheses to a file; a separate one-screen capture app target; or manual
-   transcription from `SFSpeechRecognitionResult` logging. The first is least
-   effort and reusable for cluster 5c's latency capture.
-2. **Is `ParseResult` `Codable`?** Confirm. If not: test-only decoder vs. a
-   sanctioned Core change (the latter needs an explicit budget decision — Core
-   is frozen).
-3. **Corpus size target.** How many clips per noise condition / speaker is
-   "enough" for the gate to be meaningful? (Master spec doesn't quantify.)
-4. **Where do the audio files themselves live?** They may be large. Options:
-   commit small compressed clips under `Tests/.../Fixtures/audio/`; keep only
-   the derived n-best JSON in-repo and store audio in a separate LFS repo /
-   drive; keep audio entirely out of the repo and treat the JSON fixtures as
-   the artifact of record. The harness only needs the JSON.
-5. **Who are the volunteers and is there consent** for storing/keeping their
-   voice recordings? (Even short gym-command clips.)
-6. **Does the gate share a harness with cluster 5c** (CI audio replay)? If the
-   5c latency gate also replays recorded audio through the real recogniser,
-   the fixture format and loader should be common.
+1. **How are recogniser n-best lists captured on device?** ✅ **`#if
+   DEBUG` hook in `SystemSpeechRecognizer`.** Implemented: `finish(_:)`
+   appends every utterance's final n-best hypotheses as one JSON line
+   (`{"capturedAt","hypotheses"}`) to `corpus-capture.jsonl` under
+   Application Support, gated behind a `CORPUS_CAPTURE=1` scheme
+   environment variable so ordinary day-to-day Debug runs don't grow the
+   file — only a deliberate recording session does. Compiled out of
+   Release entirely. Pull the file off-device after a session and
+   hand-write the matching `Fixtures/corpus/*.json` rows from it.
+2. **Is `ParseResult` `Codable`?** ✅ **No** (confirmed:
+   `WorkoutLoggerCore/Model.swift` declares it `Equatable, Sendable`
+   only) — already resolved by 6.2's implementation. `Tests/
+   WorkoutLoggerCoreTests/CorpusFixture.swift` decodes a small
+   test-only JSON *mirror* by hand rather than teaching the frozen Core
+   type to serialise itself; no Core change was needed.
+3. **Corpus size target.** ✅ **Robust**: multiple speakers × multiple
+   noise conditions per row (100+ clips), not just a couple of clean
+   takes — a real time investment before the gate promotes, but a more
+   representative rate than a minimal first pass would give.
+4. **Where do the audio files themselves live?** ✅ **Nowhere in the
+   repo.** Matches what `loadCorpus` already reads — only the derived
+   n-best JSON fixtures land in `Fixtures/corpus/`; raw audio clips are
+   discarded or kept locally, never committed.
+5. **Who are the volunteers and is there consent** for storing/keeping
+   their voice recordings? ✅ **The repo owner only**, for this pass —
+   no third-party consent tracking needed. Revisit this question if a
+   later pass adds other speakers' clips.
+6. **Does the gate share a harness with cluster 5c** (CI audio replay)?
+   ✅ **No — not needed.** Cluster 5c's `[DEVICE] measure` step already
+   reads its latency numbers out of the existing `.setLoggedLatency`
+   telemetry buckets in `telemetry-queue.json` (built in an earlier
+   cluster), which is a different, already-working mechanism from this
+   cluster's new hypothesis-capture hook. The two capture different
+   things (a timing bucket vs. a transcript) for different purposes, so
+   forcing a shared harness would only add coupling with no benefit —
+   they stay independent.
 
 ---
 
@@ -188,9 +204,12 @@ recording logistics, not code. Promotion is small once numbers are stable.
 - [x] 6.1 widen hand-authored corpus 14 to 21 rows (in-scope rows only, `rate` stays 1.0) -- `test(corpus)` commit
 - [x] 6.2 disk-fixture format + `loadCorpus` in test target + move existing rows -- `refactor(corpus)` commit
 - [x] 6.3 recording-protocol checklist -- `checklists/2026-09-14-accuracy-corpus-recording.md`
+- [x] OPEN QUESTIONS resolved and written back into this spec; the Q1
+     capture hook (`SystemSpeechRecognizer`'s `#if DEBUG`
+     `CORPUS_CAPTURE=1` JSONL writer) implemented. Done 2026-09-16.
 - [ ] [DATA] record clips, capture n-best, write fixtures -- **blocked**: cluster 5a's
-     on-device recogniser front-end + the sec-0 decisions (Q1 capture hook, Q3 size
-     target, Q4 audio storage, Q5 consent, Q6 shared harness).
+     on-device recogniser front-end (needs a physical iPhone session; the
+     capture tooling itself is ready).
 - [ ] investigate misses; tune post-processor / parser for in-scope failures -- **blocked** on [DATA].
 - [ ] promote to release-blocking CI gate + held-out slice + dated rate note -- **blocked** on a stable [DATA] rate.
 - [x] update parent roadmap Cluster 6 status + memory (INDEX snapshot + this Status).

@@ -208,9 +208,52 @@ final class SystemSpeechRecognizer: TranscriptSource {
             request = nil
             return
         }
+        #if DEBUG
+        if case let .success(hypotheses) = outcome {
+            captureHypotheses(hypotheses)
+        }
+        #endif
         continuation.resume(with: outcome)
         self.continuation = nil
         task = nil
         request = nil
     }
+
+    #if DEBUG
+    /// Cluster 6 [DATA] capture aid (spec OPEN QUESTION 1). Deliberately
+    /// opt-in even in Debug builds — set the `CORPUS_CAPTURE=1` environment
+    /// variable on the run scheme before a recording session — so ordinary
+    /// day-to-day Debug runs don't silently grow this file. Appends each
+    /// utterance's final n-best hypotheses as one JSON line under
+    /// Application Support; pull the file off-device afterward and
+    /// hand-write the matching `Fixtures/corpus/*.json` row. Compiled out
+    /// of release builds entirely.
+    private struct CorpusCaptureEntry: Encodable {
+        let capturedAt: Date
+        let hypotheses: [String]
+    }
+
+    private static let corpusCaptureURL: URL? = {
+        guard ProcessInfo.processInfo.environment["CORPUS_CAPTURE"] == "1",
+              let dir = FileManager.default.urls(
+                  for: .applicationSupportDirectory, in: .userDomainMask
+              ).first
+        else { return nil }
+        return dir.appendingPathComponent("corpus-capture.jsonl")
+    }()
+
+    private func captureHypotheses(_ hypotheses: [String]) {
+        guard let url = Self.corpusCaptureURL else { return }
+        let entry = CorpusCaptureEntry(capturedAt: Date(), hypotheses: hypotheses)
+        guard var line = try? JSONEncoder().encode(entry) else { return }
+        line.append(UInt8(ascii: "\n"))
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            handle.seekToEndOfFile()
+            handle.write(line)
+        } else {
+            try? line.write(to: url)
+        }
+    }
+    #endif
 }
