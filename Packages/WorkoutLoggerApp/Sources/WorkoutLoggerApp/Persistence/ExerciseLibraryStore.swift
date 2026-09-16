@@ -48,9 +48,27 @@ public final class SwiftDataExerciseLibraryStore: ExerciseLibraryStore {
         (try? context.fetch(FetchDescriptor<ExerciseRecord>())) ?? []
     }
 
+    /// Merges any raw records left case-insensitively-duplicate by a
+    /// not-yet-reconciled cross-device sync (cluster 7a) into one `Exercise`
+    /// per name, unioning their aliases. `add`/`update`/`delete` still
+    /// operate on the raw, unmerged `records()`. `FetchDescriptor` makes no
+    /// ordering guarantee, so records are sorted (plain `<`, case-sensitive)
+    /// before merging -- otherwise which duplicate's casing "wins" as the
+    /// canonical name would vary run to run.
     public func all() -> [Exercise] {
-        records()
-            .map { Exercise(name: $0.name, aliases: $0.aliases) }
+        var merged: [String: Exercise] = [:]  // keyed by lowercased name
+        for record in records().sorted(by: { $0.name < $1.name }) {
+            let key = record.name.lowercased()
+            if let existing = merged[key] {
+                merged[key] = Exercise(
+                    name: existing.name,
+                    aliases: Array(Set(existing.aliases + record.aliases))
+                )
+            } else {
+                merged[key] = Exercise(name: record.name, aliases: record.aliases)
+            }
+        }
+        return merged.values
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 

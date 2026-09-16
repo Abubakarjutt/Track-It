@@ -79,4 +79,21 @@ struct ExerciseLibraryStoreTests {
         #expect(defaultExerciseSeed.count == 6)
         #expect(defaultExerciseSeed.map(\.name).contains("Conventional Deadlift"))
     }
+
+    @Test("two records that only differ by case merge into one, aliases unioned")
+    func caseInsensitiveDuplicatesMerge() throws {
+        let (store, context) = try makeStore()
+        // Two raw records a not-yet-reconciled cross-device sync (cluster 7a)
+        // could leave -- each device added its own before either had seen
+        // the other's row.
+        context.insert(ExerciseRecord(name: "Bench Press", aliases: ["bench"]))
+        context.insert(ExerciseRecord(name: "bench press", aliases: ["bp"]))
+        try context.save()
+
+        let all = store.all()
+
+        #expect(all.count == 1)
+        #expect(all.first?.name == "Bench Press")
+        #expect(all.first?.aliases.sorted() == ["bench", "bp"])
+    }
 }
