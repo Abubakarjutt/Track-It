@@ -30,10 +30,12 @@ public final class InMemorySyncedWorkoutStore: SyncedWorkoutStore {
     public func forgetAll() { startTimes.removeAll() }
 }
 
-/// SwiftData-backed `SyncedWorkoutStore` over the shared container. `@Attribute(.unique)`
-/// on `SyncedWorkoutRecord.startedAt` makes `markSynced` idempotent; a failed
-/// fetch or save is swallowed here — a missed dedupe entry costs at most one
-/// duplicate `HKWorkout` the user can delete, the same worst case v1 accepted.
+/// SwiftData-backed `SyncedWorkoutStore` over the shared container.
+/// `markSynced`'s own `isSynced` guard (below) makes it idempotent — no
+/// `@Attribute(.unique)` on `SyncedWorkoutRecord.startedAt` (CloudKit
+/// mirroring, cluster 7a, doesn't support it). A failed fetch or save is
+/// swallowed here — a missed dedupe entry costs at most one duplicate
+/// `HKWorkout` the user can delete, the same worst case v1 accepted.
 @MainActor
 public final class SwiftDataSyncedWorkoutStore: SyncedWorkoutStore {
     private let context: ModelContext
