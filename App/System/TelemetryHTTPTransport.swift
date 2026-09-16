@@ -9,12 +9,12 @@ import WorkoutLoggerApp
 /// network error — throws plain, which the uploader treats as transient and
 /// retries with back-off. No response body is read.
 struct TelemetryHTTPTransport: TelemetryTransport {
-    /// First-party ingest endpoint. TODO(#6): placeholder host — set to the
-    /// real ingest host before shipping analytics enabled; the status-code
-    /// taxonomy below is provisional until that endpoint's contract is fixed.
-    /// The shape (POST, `application/json`, the `TelemetryPayload` body) is
-    /// fixed by spec § "Telemetry transport".
-    static let defaultEndpoint = URL(string: "https://telemetry.trackit.abubakarsahi.com/v1/events")!
+    /// First-party ingest endpoint. TODO(#6): interim staging host — set to
+    /// the real production ingest host before shipping analytics enabled;
+    /// the status-code taxonomy below is provisional until that endpoint's
+    /// contract is fixed. The shape (POST, `application/json`, the
+    /// `TelemetryPayload` body) is fixed by spec § "Telemetry transport".
+    static let defaultEndpoint = URL(string: "https://staging.trackit.abubakarsahi.com/v1/events")!
 
     /// 4xx codes that will not change on retry — drop the batch.
     /// Deliberately excludes 401/403: an auth failure is a client-config
