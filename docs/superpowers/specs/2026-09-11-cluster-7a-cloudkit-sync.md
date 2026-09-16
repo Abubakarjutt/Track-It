@@ -99,44 +99,70 @@ handling, and CloudKit quota behaviour.
 
 ---
 
-## OPEN QUESTIONS (resolve before implementation)
+## OPEN QUESTIONS — resolved 2026-09-15
 
-1. **SwiftData native mirroring vs. hand-rolled CloudKit.**
-   - *Native* (`cloudKitDatabase:` on `ModelConfiguration`): least code, but
-     imposes constraints — every non-optional attribute needs a default or must
-     become optional, `@Attribute(.unique)` is **not supported** with CloudKit
-     mirroring (this directly affects `SyncedWorkoutRecord.startedAt` and
-     possibly others), no cross-record uniqueness, limited migration control.
-   - *Hand-rolled* (`CKRecord` sync in a dedicated sync engine behind the store
-     protocols): full control, much more code, own conflict handling, own
-     retry/backoff, own schema migration. Weeks of work.
-   - **Decision needed**, and it dictates almost everything below.
-2. **What syncs?** Completed workouts only? Also the custom-exercise library?
-   Also settings (unit, opt-ins)? Settings are in UserDefaults today, not
-   SwiftData — syncing them means `NSUbiquitousKeyValueStore` or moving them.
-   The Apple-Health opt-in and analytics opt-in arguably should **not** sync
-   (per-device privacy choices).
-3. **Conflict rule.** Last-writer-wins by modification timestamp? Field-level
-   merge? "A completed workout is immutable once ended, so conflicts only
-   happen on post-hoc edits (cluster 3) — take the most recent edit"? Pick one
-   and make it testable.
-4. **Uniqueness without `.unique`.** If native mirroring is chosen,
-   `SyncedWorkoutRecord`'s `@Attribute(.unique)` must go. What replaces the
-   dedupe guarantee — a fetch-before-insert in `SwiftDataSyncedWorkoutStore`, a
-   deterministic record id derived from `startedAt`, something else? Same
-   question for any other `.unique` attribute in the schema (audit
-   `WorkoutRecord` / `ExerciseRecord`).
-5. **Migration.** Existing users have a local-only store. Turning on CloudKit
-   changes the store description. Is there a one-time migration, and what
-   happens to a user with data on two devices *before* first sync (both sets
-   must survive the union)?
-6. **UI surface.** Is there a sync-status indicator / a manual "sync now" / an
-   iCloud-account-missing state in Settings, or is it fully invisible? The
-   master spec says nothing.
-7. **Interaction with the manual export.** Does export stay? (Probably yes — it's
-   the "get my data out" story regardless of sync.)
-8. **Entitlement / container naming.** `iCloud.com.abubakarsahi.trackit`?
-   Confirm the bundle id (`com.abubakarsahi.trackit` per `project.yml`).
+1. **SwiftData native mirroring vs. hand-rolled CloudKit.** ✅ **Native**
+   (`cloudKitDatabase:` on `ModelConfiguration`). Owner's call, weighing ~1
+   week + schema fallout against multiple weeks of a hand-rolled engine.
+   Direct consequence: this cluster has **no app-owned sync-transport
+   object** to inject a fake into — CloudKit's own mirroring is opaque
+   framework machinery. Acceptance tests 1/3 ("two-device convergence",
+   "conflict resolution") therefore target the app-level code this choice
+   *does* require us to write (the dedupe/merge logic replacing `.unique`,
+   OPEN QUESTION 4) rather than a simulated transport; the actual
+   cross-device CloudKit behaviour stays device-only, same as every other
+   device-only item in this doc.
+2. **What syncs?** ✅ **Completed workouts + the custom exercise library.**
+   Settings (unit, HealthKit opt-in, analytics opt-in) stay in
+   `UserDefaults`, untouched, per-device — the opt-ins are privacy choices
+   that should not silently follow an iCloud account across devices.
+3. **Conflict rule.** ✅ **Last-writer-wins by edit timestamp.** A completed
+   workout is immutable once ended (conflicts only arise from cluster 3's
+   post-hoc edits), and CloudKit's own record-level merge is already
+   effectively last-writer-wins by server modification time — native
+   mirroring gives us this for free at the transport layer. No app-level
+   conflict-resolution code to write; acceptance test 3 is satisfied by this
+   being the documented, device-verified behaviour rather than a unit test
+   (there is nothing at the app layer to unit test — see OPEN QUESTION 1).
+4. **Uniqueness without `.unique`.** ✅ Audited all three `@Attribute(.unique)`
+   sites:
+   - `WorkoutRecord.startedAt` — `SwiftDataWorkoutStore.save` already
+     fetches by `startedAt` and updates the existing record instead of
+     inserting a second one. `.unique` was redundant; removing it changes
+     nothing.
+   - `SyncedWorkoutRecord.startedAt` — `SwiftDataSyncedWorkoutStore.markSynced`
+     already guards on `isSynced(startedAt:)` before inserting. Same:
+     `.unique` was redundant.
+   - `ExerciseRecord.name` — genuinely needs new logic. `add(_:)` does not
+     pre-check; the case-insensitive dedupe rule lives one level up in
+     `ExerciseLibraryValidation`, which cannot see another device's
+     not-yet-synced state. Two devices independently adding
+     case-insensitively-matching names before their first sync would land
+     two raw records. Resolved by merging case-insensitive collisions at
+     read time in `SwiftDataExerciseLibraryStore.all()` (union the aliases,
+     return one entry) rather than mutating storage on every read — `add`/
+     `update`/`delete` are unchanged; a rare not-yet-reconciled duplicate
+     under a direct `update(named:)` is an accepted edge case, same style as
+     `TrackitApp.knownBests`'s documented self-healing discontinuity.
+   - All three models also need every attribute to be optional or carry a
+     default value (a separate, unrelated CloudKit-mirroring requirement,
+     not just the `.unique` removal) — added as part of this change.
+5. **Migration.** ✅ No explicit one-time migration UI. Native mirroring
+   uploads existing local rows automatically once `cloudKitDatabase:` is
+   set on the `ModelConfiguration`. Two devices with pre-existing
+   local-only data each push their own rows on first sync; OPEN QUESTION 4's
+   fetch-before-insert guards (`WorkoutRecord`/`SyncedWorkoutRecord`) and
+   read-time merge (`ExerciseRecord`) mean both devices' pre-sync data
+   unions without loss, modulo the same near-zero-probability
+   simultaneous-`startedAt`-collision edge case cluster 4 already accepted
+   for the HealthKit dedupe ledger.
+6. **UI surface.** ✅ Fully invisible. No sync-status indicator, no manual
+   "sync now", no iCloud-account-missing state. Matches v1's offline-first
+   ethos and keeps this cluster's surface area to persistence + entitlements.
+7. **Interaction with the manual export.** ✅ Unchanged — kept as-is, the
+   "get my data out" story regardless of sync.
+8. **Entitlement / container naming.** ✅ `iCloud.com.abubakarsahi.trackit`,
+   matching the bundle id `com.abubakarsahi.trackit` in `project.yml`.
 
 ---
 
@@ -149,7 +175,7 @@ constraint work (OPEN QUESTION 4) to touch cluster 4's code.
 
 ## Status
 
-- [ ] OPEN QUESTIONS resolved and written back into this spec
+- [x] OPEN QUESTIONS resolved and written back into this spec. Done 2026-09-15.
 - [ ] `writing-plans` → `docs/superpowers/plans/<date>-v1.1-cluster-7a-cloudkit-sync.md`
 - [ ] implementation
 - [ ] two-device manual verification
